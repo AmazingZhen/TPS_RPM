@@ -1,33 +1,32 @@
 #include <iostream>
-#include <random>
 
 #include "rpm.h"
-
-MatrixXd generate_random_points(int point_num) {
-	std::random_device rd;
-	std::mt19937 mt;
-	std::uniform_real_distribution<double> dist(0.0, 100.0);
-
-	MatrixXd X(point_num, 2);
-	for (int i = 0; i < point_num; i++) {
-		Vector2d x(dist(mt), dist(mt));
-		X.row(i) = x;
-	}
-
-	return X;
-}
+#include "data.h"
 
 int main() {
-	int point_num = 50;
+	int data_point_num = 50;
+	double data_range_min = 0.0, data_range_max = 500.0;
+	double data_noise_mu = 0.0, data_noise_sigma = 50.0;
 
-	MatrixXd X = generate_random_points(point_num);
-	MatrixXd Y = X;
-	MatrixXd M = MatrixXd::Identity(point_num, point_num);
+	MatrixXd X = data_generate::generate_random_points(data_point_num, data_range_min, data_range_max);
+	MatrixXd offset(X.rows(), X.cols());
+	offset.col(0).setConstant(100);
+	MatrixXd Y = data_generate::add_gaussian_noise(X, data_noise_mu, data_noise_sigma) + offset;
+	//MatrixXd Y = X + offset;
+
+	Mat origin_image = data_visualize::visualize(X, Y);
+	imwrite("data_origin.png", origin_image);
+
+	//MatrixXd Y = X;
+	MatrixXd M = MatrixXd::Identity(data_point_num, data_point_num);
 
 	double lambda = 0.1;
 
 	rpm::ThinPLateSplineParams params;
 	rpm::estimate_transform(X, Y, M, lambda, params);
+
+	Mat result_image = data_visualize::visualize(params.applyTransform(X), Y);
+	imwrite("data_result.png", result_image);
 
 	getchar();
 

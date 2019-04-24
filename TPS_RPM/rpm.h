@@ -20,7 +20,10 @@ namespace rpm {
 		MatrixXd d;
 		// K * (D + 1) matrix representing the non-affine deformation.
 		MatrixXd w;
+
+		MatrixXd applyTransform(const MatrixXd& X) const;
 	} ThinPLateSplineParams;
+
 
 
 	// Compute the thin-plate spline parameters from two point sets.
