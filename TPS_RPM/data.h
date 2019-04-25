@@ -8,15 +8,18 @@
 
 #pragma once
 
+#include <iostream>
 #include <random>
 #include <Eigen/Core>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
-#include "rpm.h"
-
 using namespace Eigen;
 using namespace cv;
+
+using std::cin;
+using std::cout;
+using std::endl;
 
 namespace data_generate {
 	MatrixXd generate_random_points(const int point_num, const double range_min, const double range_max);
