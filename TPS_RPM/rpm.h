@@ -14,30 +14,11 @@ using namespace Eigen;
 
 namespace rpm {
 	const static int D = 2;
+	const static int USE_HOMO = true;
 
 	class ThinPLateSplineParams {
 	public:
-		ThinPLateSplineParams(const MatrixXd &X) {
-			this->X = X;
-
-			const int K = X.rows();
-
-			phi = MatrixXd::Zero(K, K);  // phi(a, b) = || Xb - Xa || ^ 2 * log(|| Xb - Xa ||);
-#pragma omp parallel for
-			for (int a_i = 0; a_i < K; a_i++) {
-				VectorXd a = X.row(a_i);
-
-				for (int b_i = 0; b_i < K; b_i++) {
-					if (b_i == a_i) {
-						continue;
-					}
-
-					VectorXd b = X.row(b_i);
-
-					phi(a_i, b_i) = ((b - a).squaredNorm() * log((b - a).norm()));
-				}
-			}
-		}
+		ThinPLateSplineParams(const MatrixXd &X);
 
 		// (D + 1) * (D + 1) matrix representing the affine transformation.
 		MatrixXd d;

@@ -72,6 +72,7 @@ Mat data_visualize::visualize(const MatrixXd& X, const MatrixXd& Y)
 	//std::cout << Y << std::endl;
 
 	Mat img(image_height, image_width, CV_8UC3);
+	img = cv::Scalar(0, 0, 0);
 	int point_num = X.rows();
 	for (int i = 0; i < point_num; i++) {
 		const Vector2d& x = X.row(i), &y = Y.row(i);
