@@ -7,13 +7,13 @@ int main() {
 	int data_point_num = 10;
 	cout << "Enter data_point_num : ";
 	cin >> data_point_num;
-	double data_range_min = 0.0, data_range_max = 1000.0;
-	double data_noise_mu = 0.0, data_noise_sigma = 20.0;
+	double data_range_min = 0.0, data_range_max = 10000.0;
+	double data_noise_mu = 0.0, data_noise_sigma = 10.0;
 
 	MatrixXd X = data_generate::generate_random_points(data_point_num, data_range_min, data_range_max);
 	MatrixXd offset(X.rows(), X.cols());
-	offset.col(0).setConstant(20.0);
-	offset.col(1).setConstant(30.0);
+	offset.col(0).setConstant(10.0);
+	offset.col(1).setConstant(10.0);
 	MatrixXd Y = data_generate::add_gaussian_noise(X, data_noise_mu, data_noise_sigma) + offset;
 	//MatrixXd Y = X + offset;
 
@@ -29,8 +29,10 @@ int main() {
 	MatrixXd M;
 	rpm::estimate(X, Y, M, params);
 
+	MatrixXd diff = (params.applyTransform() - Y).cwiseAbs();
 	cout << "XT - Y" << endl;
-	cout << params.applyTransform() - Y << endl;
+	cout << diff << endl;
+	cout << diff.maxCoeff() << endl;
 	//rpm::estimate_transform(X, Y, M, lambda, params);
 
 	Mat result_image = data_visualize::visualize(params.applyTransform(), Y);

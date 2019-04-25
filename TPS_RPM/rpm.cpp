@@ -86,15 +86,14 @@ bool rpm::estimate(
 
 	try {
 		// Annealing params
-		const double T_start = 1.0 / 0.00091, T_end = 1.0 / 0.2, r = 0.95, I0 = 5, epsilon0 = 0.05;
+		const double T_start = 1.0 / 0.0091, T_end = 1.0 / 0.2, r = 0.95, I0 = 5, epsilon0 = 1e-2;
 		// Softassign params
-		const double I1 = 30, epsilon1 = 0.005;
+		const double I1 = 30, epsilon1 = 1e-3;
 		// Thin-plate spline params
 		const double lambda = 0.01;
 
 		double T_cur = T_start;
 
-		MatrixXd M_prev;
 
 		if (!init_params(X, Y, T_start, M, params)) {
 			throw std::runtime_error("init params failed!");
@@ -105,11 +104,11 @@ bool rpm::estimate(
 			//printf("T : %.2f\n\n", T_cur);
 
 			int iter = 0;
-			MatrixXd M_prev;
+			MatrixXd M_prev = M;
 
-			do {
+			while (iter++ < I0) {
 				//printf("	Annealing iter : %d\n", iter);
-
+				MatrixXd M_prev = M;
 				if (!estimate_correspondence(X, Y, params, T_cur, M)) {
 					throw std::runtime_error("estimate correspondence failed!");
 				}
@@ -120,7 +119,14 @@ bool rpm::estimate(
 				}
 				//getchar();
 
-			} while (!_matrices_equal(M_prev, M, epsilon0) && iter++ < I0);
+				if (!_matrices_equal(M_prev, M, epsilon0)) {
+					break;
+				}
+			}
+
+			if (_matrices_equal(M_prev, M, epsilon1)) {
+				break;
+			}
 
 			T_cur *= r;
 
@@ -341,7 +347,7 @@ bool rpm::estimate_transform(
 		//std::cout << "Y" << std::endl;
 		//std::cout << Y << std::endl;
 
-		MatrixXd XT = params.applyTransform();
+		//MatrixXd XT = params.applyTransform();
 		//std::cout << "XT" << std::endl;
 		//std::cout << XT << std::endl;
 		//std::cout << "(M * Y_)" << std::endl;
