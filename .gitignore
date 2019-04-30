@@ -245,3 +245,4 @@ ModelManifest.xml
 .fake/
 /TPS_RPM/data.png
 *.png
+/TPS_RPM/data/human

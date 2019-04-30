@@ -10,6 +10,7 @@
 #include "rpm.h"
 
 #include <iostream>
+#include <fstream>
 
 MatrixXd data_generate::generate_random_points(const int point_num, const double range_min, const double range_max) {
 	std::default_random_engine gen;
@@ -44,13 +45,37 @@ MatrixXd data_generate::add_gaussian_noise(const MatrixXd& X, const double mu, c
 	return Y;
 }
 
-Mat data_visualize::visualize(const MatrixXd& X, const MatrixXd& Y)
+MatrixXd data_generate::read_from_file(const string & filename)
 {
-	if (X.rows() != Y.rows() || X.cols() != Y.cols()) {
-		throw std::invalid_argument("X size not same as Y size!");
+	std::ifstream f(filename);
+	if (!f.is_open()) {
+		throw std::runtime_error("can not open file : " + filename);
+	}
+	cout << "Opened : " << filename << endl;
+
+	vector<Vector2d> points;
+	while (!f.eof()) {
+		Vector2d p;
+		f >> p.x() >> p.y();
+		points.push_back(p);
+	}
+	f.close();
+	//cout << points.size() << endl;
+
+	MatrixXd X(points.size(), 2);
+#pragma omp parallel for
+	for (int i = 0; i < points.size(); i++) {
+		X.row(i) = points[i];
 	}
 
-	if (X.cols() != rpm::D) {
+	//cout << X << endl;
+
+	return X;
+}
+
+Mat data_visualize::visualize(const MatrixXd& X, const MatrixXd& Y, const bool draw_line)
+{
+	if (X.cols() != Y.cols() || X.cols() != rpm::D) {
 		throw std::invalid_argument("Only support 2d points now!");
 	}
 
@@ -73,17 +98,30 @@ Mat data_visualize::visualize(const MatrixXd& X, const MatrixXd& Y)
 
 	Mat img(image_height, image_width, CV_8UC3);
 	img = cv::Scalar(0, 0, 0);
-	int point_num = X.rows();
-	for (int i = 0; i < point_num; i++) {
-		const Vector2d& x = X.row(i), &y = Y.row(i);
 
+	if (draw_line && X.rows() == Y.rows()) {
+		for (int i = 0; i < X.rows(); i++) {
+			const Vector2d& x = X.row(i), &y = Y.row(i);
+
+			cv::line(img,
+				cv::Point2f(x.x() - min_x, image_height - 1 - (x.y() - min_y)),
+				cv::Point2f(y.x() - min_x, image_height - 1 - (y.y() - min_y)),
+				cv::Scalar(255, 255, 255));
+		}
+	}
+
+	for (int i = 0; i < X.rows(); i++) {
+		const Vector2d& x = X.row(i);
 		circle(img,
 			cv::Point2f(x.x() - min_x, image_height - 1 - (x.y() - min_y)),
 			radius_x,
 			color_x,
 			thickness_x,
 			lineType);
+	}
 
+	for (int i = 0; i < Y.rows(); i++) {
+		const Vector2d& y = Y.row(i);
 		circle(img,
 			cv::Point2f(y.x() - min_x, image_height - 1 - (y.y() - min_y)),
 			radius_y,

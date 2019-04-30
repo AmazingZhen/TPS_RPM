@@ -20,12 +20,14 @@ using namespace cv;
 using std::cin;
 using std::cout;
 using std::endl;
+using std::string;
 
 namespace data_generate {
 	MatrixXd generate_random_points(const int point_num, const double range_min, const double range_max);
 	MatrixXd add_gaussian_noise(const MatrixXd& X, const double mu, const double sigma);
+	MatrixXd read_from_file(const string& filename);
 }
 
 namespace data_visualize {
-	Mat visualize(const MatrixXd& X, const MatrixXd& Y);
+	Mat visualize(const MatrixXd& X, const MatrixXd& Y, const bool draw_line = true);
 }

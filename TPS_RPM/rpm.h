@@ -15,6 +15,14 @@ using namespace Eigen;
 namespace rpm {
 	const static int D = 2;
 	const static int USE_HOMO = true;
+	// Annealing params
+	const static double T_start = 1000, T_end = 1;
+	const static double r = 0.97, I0 = 5, epsilon0 = 1e-2;
+	const static double alpha = 25.0; // 5 * 5
+	// Softassign params
+	const static double I1 = 30, epsilon1 = 1e-3;
+	// Thin-plate spline params
+	const static double lambda_start = 100;
 
 	class ThinPLateSplineParams {
 	public:
@@ -28,11 +36,18 @@ namespace rpm {
 		MatrixXd applyTransform() const;
 		VectorXd applyTransform(int x_i) const;
 
+		MatrixXd get_phi() { return phi; };
+		MatrixXd get_Q() { return Q; };
+		MatrixXd get_R() { return R; };
+
 	private:
 		MatrixXd X;
 
 		// K * K matrix
 		MatrixXd phi;
+
+		// Q, R
+		MatrixXd Q, R;
 	};
 
 	// Compute the thin-plate spline params and 2d point correspondence from two point sets.
@@ -74,6 +89,7 @@ namespace rpm {
 		const MatrixXd& Y,
 		const ThinPLateSplineParams& params,
 		const double T,
+		const double T0,
 		MatrixXd& M
 	);
 
@@ -90,6 +106,7 @@ namespace rpm {
 		const MatrixXd& X,
 		const MatrixXd& Y,
 		const MatrixXd& M,
+		const double T,
 		const double lambda,
 		ThinPLateSplineParams& params
 	);
