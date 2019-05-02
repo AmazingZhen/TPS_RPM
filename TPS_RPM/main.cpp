@@ -56,13 +56,13 @@ int main() {
 	MatrixXd M;
 	rpm::estimate(X, Y, M, params);
 
-	MatrixXd diff = (params.applyTransform() - Y).cwiseAbs();
-	cout << "XT - Y" << endl;
-	cout << diff << endl;
-	cout << diff.maxCoeff() << endl;
+	//MatrixXd diff = (params.applyTransform() - Y).cwiseAbs();
+	//cout << "XT - Y" << endl;
+	//cout << diff << endl;
+	//cout << diff.maxCoeff() << endl;
 	//rpm::estimate_transform(X, Y, M, lambda, params);
 
-	Mat result_image = data_visualize::visualize(params.applyTransform(), Y);
+	Mat result_image = data_visualize::visualize(params.applyTransform(false), Y);
 	imwrite("data_result.png", result_image);
 
 	getchar();

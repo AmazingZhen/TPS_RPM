@@ -14,10 +14,9 @@ using namespace Eigen;
 
 namespace rpm {
 	const static int D = 2;
-	const static int USE_HOMO = true;
 	// Annealing params
-	const static double T_start = 1500, T_end = T_start * 0.05;
-	const static double r = 0.95, I0 = 5, epsilon0 = 1e-2;
+	const static double T_start = 1500, T_end = T_start * 0.001;
+	const static double r = 0.93, I0 = 5, epsilon0 = 2 * 1e-2;
 	const static double alpha = 25.0; // 5 * 5
 	// Softassign params
 	const static double I1 = 30, epsilon1 = 1e-3;
@@ -33,7 +32,7 @@ namespace rpm {
 		// K * (D + 1) matrix representing the non-affine deformation.
 		MatrixXd w;
 
-		MatrixXd applyTransform() const;
+		MatrixXd applyTransform(bool homo) const;
 		VectorXd applyTransform(int x_i) const;
 
 		MatrixXd get_phi() { return phi; };
@@ -110,6 +109,10 @@ namespace rpm {
 		const double lambda,
 		ThinPLateSplineParams& params
 	);
+
+	MatrixXd apply_correspondence(
+		const MatrixXd& Y,
+		const MatrixXd& M);
 }
 
 

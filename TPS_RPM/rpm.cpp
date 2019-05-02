@@ -74,6 +74,18 @@ namespace {
 
 		//printf("	Softassign iter : %d\n", iter);
 	}
+
+	double _distance(const MatrixXd &Y_, const MatrixXd& M, const rpm::ThinPLateSplineParams& params) {
+		MatrixXd Y = rpm::apply_correspondence(Y_, M);
+		MatrixXd XT = params.applyTransform(true);
+
+		if (XT.rows() != Y.rows() || XT.cols() != Y.cols()) {
+			throw std::invalid_argument("X size not same as Y in _distance!");
+		}
+
+		MatrixXd diff = (Y - XT).cwiseAbs();
+		return diff.maxCoeff();
+	}
 }
 
 bool rpm::estimate(
@@ -113,12 +125,13 @@ bool rpm::estimate(
 
 		char file[256];
 		sprintf_s(file, "res/data_%.2f.png", T_cur);
-		Mat result_image = data_visualize::visualize(params.applyTransform(), Y);
+		Mat result_image = data_visualize::visualize(params.applyTransform(false), Y);
 		imwrite(file, result_image);
 
 		while (T_cur >= T_end) {
 
-			//printf("T : %.2f\n\n", T_cur);
+			printf("T : %.2f\n\n", T_cur);
+			printf("lambda : %.2f\n\n", lambda);
 
 			int iter = 0;
 			MatrixXd M_prev = M;
@@ -126,6 +139,7 @@ bool rpm::estimate(
 			while (iter++ < I0) {
 				//printf("	Annealing iter : %d\n", iter);
 				MatrixXd M_prev = M;
+				ThinPLateSplineParams params_prev = params;
 				if (!estimate_correspondence(X, Y, params, T_cur, T_start, M)) {
 					throw std::runtime_error("estimate correspondence failed!");
 				}
@@ -137,20 +151,34 @@ bool rpm::estimate(
 				//getchar();
 
 				if (_matrices_equal(M_prev, M, epsilon0)) {
+					//if (T_cur < 50.0) {
+					//	MatrixXd M_diff = (M_prev - M);
+					//	double max_m_diff = M_diff.maxCoeff();
+
+					//	cout << "M_diff : " << max_m_diff << endl;
+					//	cout << "_distance:" << _distance(Y, M, params) << endl;
+					//	cout << "_distance prev:" << _distance(Y, M_prev, params_prev) << endl;
+					//}
+
+					//if (_distance(Y, M, params) > _distance(Y, M_prev, params_prev)) {
+					//	M = M_prev;
+					//	params = params_prev;
+					//}
+
 					break;
 				}
 			}
 
-			if (_matrices_equal(M_prev, M, epsilon1)) {
-				break;
-			}
+			//if (_matrices_equal(M_prev, M, epsilon1)) {
+			//	break;
+			//}
 
 			T_cur *= r;
 			lambda *= r;
 			//lambda = lambda_start * T_cur;
 
 			sprintf_s(file, "res/data_%.2f.png", T_cur);
-			Mat result_image = data_visualize::visualize(params.applyTransform(), Y);
+			Mat result_image = data_visualize::visualize(params.applyTransform(false), Y);
 			imwrite(file, result_image);
 			//cout << endl << endl;
 			//getchar();
@@ -180,6 +208,7 @@ bool rpm::init_params(
 
 	//estimate_transform(X, X, MatrixXd::Identity(K + 1, K + 1), T, lambda, params);
 
+	estimate_correspondence(X, Y, params, T, T, M);
 
 	//M = Eigen::MatrixXd::Identity(K + 1, N + 1);
 
@@ -219,7 +248,7 @@ bool rpm::estimate_correspondence(
 
 	M = MatrixXd::Zero(K + 1, N + 1);
 
-	MatrixXd XT = params.applyTransform();
+	MatrixXd XT = params.applyTransform(false);
 	//MatrixXd dist = MatrixXd::Zero(K, N);
 	//for (int k = 0; k < K; k++) {
 	//	const VectorXd& x = XT.row(k);
@@ -260,12 +289,16 @@ bool rpm::estimate_correspondence(
 		double dist = ((y - center_x).squaredNorm());
 		M(K, n) = beta_start * std::exp(beta_start * -dist);
 	}
-
-	//cout << "M before soft assign" << endl;
-	//cout << M << endl;
+	
+	//if (T < 50.0) {
+	//	cout << "M.maxCoeff() before soft assign : " << M.maxCoeff() << endl;
+	//}
 	_soft_assign(M);
-	//cout << "M" << endl;
-	//cout << M << endl;
+	//if (T < 50.0) {
+	//	cout << "M.maxCoeff() after soft assign : " << M.maxCoeff() << endl;
+	//}
+
+	M.conservativeResize(K, N);
 
 	return true;
 }
@@ -286,29 +319,18 @@ bool rpm::estimate_transform(
 		}
 
 		const int K = X_.rows(), N = Y_.rows();
-		if (M_.rows() != K + 1 || M_.cols() != N + 1) {
+		if (M_.rows() != K || M_.cols() != N) {
 			throw std::invalid_argument("Matrix M size not same as X and Y!");
 		}
 
 		MatrixXd M = M_.block(0, 0, K, N);
 
-		int dim = D;
-		MatrixXd X, Y;
-		if (USE_HOMO) {
-			dim = D + 1;
-
-			X = MatrixXd(K, dim);
-			Y = MatrixXd(K, dim);
-			for (int k = 0; k < K; k++) {
-				X.row(k) = X_.row(k).homogeneous();
-				Y.row(k) = (M.row(k) * Y_).homogeneous();
-			}
+		int dim = D + 1;
+		MatrixXd X(K, dim), Y = apply_correspondence(Y_, M);
+		for (int k = 0; k < K; k++) {
+			X.row(k) = X_.row(k).homogeneous();
 		}
-		else {
-			X = X_;
-			Y = M * Y_;
-		}
-
+		
 		const MatrixXd& phi = params.get_phi();
 
 		//std::cout << "phi size: " << phi.rows() << ", " << phi.cols() << std::endl;
@@ -422,24 +444,7 @@ bool rpm::estimate_transform(
 
 		//std::cout << "d" << std::endl;
 		//std::cout << params.d << std::endl;
-
-		//std::cout << "X" << std::endl;
-		//std::cout << X << std::endl;
-		//std::cout << "Y" << std::endl;
-		//std::cout << Y << std::endl;
-
-		//MatrixXd XT = params.applyTransform();
-		////std::cout << "XT" << std::endl;
-		////std::cout << XT << std::endl;
-		////std::cout << "(M * Y_)" << std::endl;
-		////std::cout << (M * Y_) << std::endl;
-
-		//MatrixXd diff = (Y_ - XT).cwiseAbs();
-
-		////std::cout << "diff" << std::endl;
-		////std::cout << diff << std::endl;
-		//std::cout << "diff.maxCoeff() : " << diff.maxCoeff() << std::endl;
-		//getchar();
+		std::cout << "Estimated transform distance : " << _distance(Y_, M, params) << std::endl;
 	}
 	catch (const std::exception& e) {
 		std::cout << e.what() << std::endl;
@@ -453,6 +458,19 @@ bool rpm::estimate_transform(
 	//std::cout << "Thin-plate spline params estimating time: " << span.count() << " seconds.\n";
 
 	return true;
+}
+
+MatrixXd rpm::apply_correspondence(const MatrixXd& Y_, const MatrixXd& M)
+{
+	if (Y_.cols() != rpm::D) {
+		throw std::invalid_argument("input must be 2d!");
+	}
+
+	MatrixXd Y(Y_.rows(), rpm::D + 1);
+	Y.leftCols(rpm::D) = Y_;
+	Y.rightCols(1).setConstant(1);
+	
+	return M * Y;
 }
 
 rpm::ThinPLateSplineParams::ThinPLateSplineParams(const MatrixXd & X)
@@ -475,15 +493,9 @@ rpm::ThinPLateSplineParams::ThinPLateSplineParams(const MatrixXd & X)
 		}
 	}
 
-	if (USE_HOMO) {
-		const int K = X.rows();
-		this->X = MatrixXd(K, D + 1);
-		for (int k = 0; k < K; k++) {
-			this->X.row(k) = X.row(k).homogeneous();
-		}
-	}
-	else {
-		this->X = X;
+	this->X = MatrixXd(K, D + 1);
+	for (int k = 0; k < K; k++) {
+		this->X.row(k) = X.row(k).homogeneous();
 	}
 
 	HouseholderQR<MatrixXd> qr;
@@ -492,34 +504,28 @@ rpm::ThinPLateSplineParams::ThinPLateSplineParams(const MatrixXd & X)
 	Q = qr.householderQ();
 	R = qr.matrixQR().triangularView<Upper>();
 
-	if (USE_HOMO) {
-		w = MatrixXd::Zero(X.rows(), rpm::D + 1);
-		d = MatrixXd::Identity(rpm::D + 1, rpm::D + 1);
-	}
-	else {
-		w = MatrixXd::Zero(X.rows(), rpm::D);
-		d = MatrixXd::Identity(rpm::D, rpm::D);
-	}
+	w = MatrixXd::Zero(X.rows(), rpm::D + 1);
+	d = MatrixXd::Identity(rpm::D + 1, rpm::D + 1);
 }
 
-MatrixXd rpm::ThinPLateSplineParams::applyTransform() const
+MatrixXd rpm::ThinPLateSplineParams::applyTransform(bool homo) const
 {
 	MatrixXd XT_ = X * d + phi * w;
-	if (USE_HOMO) {
-		MatrixXd XT(XT_.rows(), XT_.cols() - 1);
-		
-		for (int k = 0; k < XT_.rows(); k++) {
-			XT.row(k) = XT_.row(k).hnormalized();
-		}
-		return XT;
+	if (homo) {
+		return XT_;
 	}
 
-	return XT_;
+	MatrixXd XT(XT_.rows(), XT_.cols() - 1);
+
+	for (int k = 0; k < XT_.rows(); k++) {
+		XT.row(k) = XT_.row(k).hnormalized();
+	}
+	return XT;
 }
 
 VectorXd rpm::ThinPLateSplineParams::applyTransform(int x_i) const
 {
 	VectorXd xt = X.row(x_i) * d + phi.row(x_i) * w;
 
-	return (USE_HOMO ? xt.hnormalized() : xt);
+	return xt.hnormalized();
 }
