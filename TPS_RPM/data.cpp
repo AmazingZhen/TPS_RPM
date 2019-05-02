@@ -73,6 +73,32 @@ MatrixXd data_generate::read_from_file(const string & filename)
 	return X;
 }
 
+bool data_generate::preprocess(MatrixXd& X, MatrixXd& Y, const double scale)
+{
+	double min_x = std::min(X.col(0).minCoeff(), X.col(0).minCoeff());
+	double max_x = std::max(X.col(0).maxCoeff(), X.col(0).maxCoeff());
+	double min_y = std::min(X.col(1).minCoeff(), Y.col(1).minCoeff());
+	double max_y = std::min(X.col(1).maxCoeff(), Y.col(1).maxCoeff());
+
+	auto normalize_mat = [](MatrixXd& m, double min_x, double max_x, double min_y, double max_y) {
+		MatrixXd t = m;
+		t.col(0).setConstant(min_x);
+		t.col(1).setConstant(min_y);
+
+		m -= t;
+		m.col(0) *= (1.0 / (max_x - min_x));
+		m.col(1) *= (1.0 / (max_y - min_y));
+	};
+
+	normalize_mat(X, min_x, max_x, min_y, max_y);
+	normalize_mat(Y, min_x, max_x, min_y, max_y);
+
+	X *= scale;
+	Y *= scale;
+
+	return true;
+}
+
 Mat data_visualize::visualize(const MatrixXd& X, const MatrixXd& Y, const bool draw_line)
 {
 	if (X.cols() != Y.cols() || X.cols() != rpm::D) {

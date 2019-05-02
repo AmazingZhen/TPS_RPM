@@ -41,16 +41,7 @@ namespace {
 		const int max_iteration = 30,
 		const double epsilon = 1e-3)
 	{
-		//cout << "Row sum" << endl;
-		//for (int r = 0; r < assignment_matrix.rows() - 1; r++) {
-		//	cout << assignment_matrix.row(r).sum() << ", ";
-		//}
-		//cout << endl;
-		//cout << "Col sum" << endl;
-		//for (int c = 0; c < assignment_matrix.cols() - 1; c++) {
-		//	cout << assignment_matrix.col(c).sum() << ", ";
-		//}
-		//cout << endl;
+		MatrixXd assignment_matrix_old;
 
 		int iter = 0;
 		while (iter++ < max_iteration){
@@ -76,21 +67,10 @@ namespace {
 				assignment_matrix.col(c) /= col_sum;
 			}
 
-			//if (_matrices_equal(assignment_matrix_old, assignment_matrix, epsilon)) {
-			//	break;
-			//}
+			if (_matrices_equal(assignment_matrix_old, assignment_matrix, epsilon)) {
+				break;
+			}
 		}
-		//cout << "Row sum" << endl;
-		//for (int r = 0; r < assignment_matrix.rows() - 1; r++) {
-		//	cout << assignment_matrix.row(r).sum() << ", ";
-		//}
-		//cout << endl;
-		//cout << "Col sum" << endl;
-		//for (int c = 0; c < assignment_matrix.cols() - 1; c++) {
-		//	cout << assignment_matrix.col(c).sum() << ", ";
-		//}
-		//cout << endl;
-		//getchar();
 
 		//printf("	Softassign iter : %d\n", iter);
 	}
@@ -105,15 +85,23 @@ bool rpm::estimate(
 	auto t1 = std::chrono::high_resolution_clock::now();
 
 	try {
-		//double T_start = 0;
-		//int K = X.rows(), N = Y.rows();
-		//for (int k = 0; k < K; k++) {
-		//	const VectorXd& x = X.row(k);
-		//	for (int n = 0; n < N; n++) {
-		//		const VectorXd& y = Y.row(n);
-		//		T_start = max(T_start, (y - x).squaredNorm());
-		//	}
-		//}
+		double max_dist = 0, average_dist = 0;
+		int K = X.rows(), N = Y.rows();
+		for (int k = 0; k < K; k++) {
+			const VectorXd& x = X.row(k);
+			for (int n = 0; n < N; n++) {
+				const VectorXd& y = Y.row(n);
+				double dist = (y - x).squaredNorm();
+
+				max_dist = max(max_dist, dist);
+				average_dist += dist;
+			}
+		}
+		average_dist /= (K * N);
+		cout << "max_dist : " << max_dist << endl;
+		cout << "average_dist : " << average_dist << endl;
+		//getchar();
+
 		//double T_end = T_start * 1e-5;
 
 		double T_cur = T_start;
@@ -122,7 +110,6 @@ bool rpm::estimate(
 		if (!init_params(X, Y, T_start, M, params)) {
 			throw std::runtime_error("init params failed!");
 		}
-		getchar();
 
 		char file[256];
 		sprintf_s(file, "res/data_%.2f.png", T_cur);
@@ -131,7 +118,7 @@ bool rpm::estimate(
 
 		while (T_cur >= T_end) {
 
-			printf("T : %.2f\n\n", T_cur);
+			//printf("T : %.2f\n\n", T_cur);
 
 			int iter = 0;
 			MatrixXd M_prev = M;
@@ -149,14 +136,14 @@ bool rpm::estimate(
 				}
 				//getchar();
 
-				//if (_matrices_equal(M_prev, M, epsilon1)) {
-				//	break;
-				//}
+				if (_matrices_equal(M_prev, M, epsilon0)) {
+					break;
+				}
 			}
 
-			//if (_matrices_equal(M_prev, M, epsilon1)) {
-			//	break;
-			//}
+			if (_matrices_equal(M_prev, M, epsilon1)) {
+				break;
+			}
 
 			T_cur *= r;
 			lambda *= r;
@@ -433,25 +420,25 @@ bool rpm::estimate_transform(
 		// params.d = MatrixXd::Identity(D + 1, D + 1);
 		//}
 
-		std::cout << "d" << std::endl;
-		std::cout << params.d << std::endl;
+		//std::cout << "d" << std::endl;
+		//std::cout << params.d << std::endl;
 
 		//std::cout << "X" << std::endl;
 		//std::cout << X << std::endl;
 		//std::cout << "Y" << std::endl;
 		//std::cout << Y << std::endl;
 
-		MatrixXd XT = params.applyTransform();
-		//std::cout << "XT" << std::endl;
-		//std::cout << XT << std::endl;
-		//std::cout << "(M * Y_)" << std::endl;
-		//std::cout << (M * Y_) << std::endl;
+		//MatrixXd XT = params.applyTransform();
+		////std::cout << "XT" << std::endl;
+		////std::cout << XT << std::endl;
+		////std::cout << "(M * Y_)" << std::endl;
+		////std::cout << (M * Y_) << std::endl;
 
-		MatrixXd diff = (Y_ - XT).cwiseAbs();
+		//MatrixXd diff = (Y_ - XT).cwiseAbs();
 
-		//std::cout << "diff" << std::endl;
-		//std::cout << diff << std::endl;
-		std::cout << "diff.maxCoeff() : " << diff.maxCoeff() << std::endl;
+		////std::cout << "diff" << std::endl;
+		////std::cout << diff << std::endl;
+		//std::cout << "diff.maxCoeff() : " << diff.maxCoeff() << std::endl;
 		//getchar();
 	}
 	catch (const std::exception& e) {
