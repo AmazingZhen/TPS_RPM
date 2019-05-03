@@ -15,6 +15,17 @@
 
 using std::cout;
 using std::endl;
+using namespace rpm;
+
+// Annealing params
+double rpm::T_start = 1500;
+double rpm::T_end = 1500 * 0.001;
+double rpm::r = 0.93, rpm::I0 = 5, rpm::epsilon0 = 2 * 1e-2;
+double rpm::alpha = 0.0; // 5 * 5
+// Softassign params
+double rpm::I1 = 30, rpm::epsilon1 = 1e-3;
+// Thin-plate spline params
+double rpm::lambda_start = 1500 * 0.2;
 
 //#define USE_SVD_SOLVER
 
@@ -88,6 +99,16 @@ namespace {
 	}
 }
 
+void rpm::set_T_start(double T)
+{
+	T_start = T;
+	T_end = T * 0.001;
+	lambda_start = T * 0.2;
+
+	cout << "Set T_start : " << T_start << endl;
+	//getchar();
+}
+
 bool rpm::estimate(
 	const MatrixXd& X,
 	const MatrixXd& Y,
@@ -112,7 +133,7 @@ bool rpm::estimate(
 		average_dist /= (K * N);
 		cout << "max_dist : " << max_dist << endl;
 		cout << "average_dist : " << average_dist << endl;
-		//getchar();
+		getchar();
 
 		//double T_end = T_start * 1e-5;
 
@@ -208,7 +229,7 @@ bool rpm::init_params(
 
 	//estimate_transform(X, X, MatrixXd::Identity(K + 1, K + 1), T, lambda, params);
 
-	estimate_correspondence(X, Y, params, T, T, M);
+	//estimate_correspondence(X, Y, params, T, T, M);
 
 	//M = Eigen::MatrixXd::Identity(K + 1, N + 1);
 
@@ -271,11 +292,11 @@ bool rpm::estimate_correspondence(
 			double dist = ((y - x).squaredNorm());
 
 			//assignment_matrix(p_i, v_i) = dist < alpha ? std::exp(-(1.0 / T) * dist) : 0;
-			M(k, n) = beta * std::exp(beta * (alpha - dist));
+			M(k, n) = beta * std::exp(beta *  -dist);
 		}
 	};
 
-	Vector2d center_x(X.col(0).mean(), X.col(1).mean()), center_y(Y.col(0).mean(), Y.col(1).mean());
+	Vector2d center_x(XT.col(0).mean(), XT.col(1).mean()), center_y(Y.col(0).mean(), Y.col(1).mean());
 
 	const double beta_start = 1.0 / T0;
 	for (int k = 0; k < K; k++) {
@@ -404,18 +425,21 @@ bool rpm::estimate_transform(
 		//getchar();
 
 		// Add regular term lambdaI * d = lambdaI * I
-		L_mat = MatrixXd(R.rows() * 2, R.cols());
-		L_mat << R,
-			MatrixXd::Identity(R.rows(), R.cols()) * lambda * 0.01;
+		//L_mat = MatrixXd(R.rows() * 2, R.cols());
+		//L_mat << R,
+		//	MatrixXd::Identity(R.rows(), R.cols()) * lambda * 0.01;
+		L_mat = R;
 
 		solver.compute(L_mat.transpose() * L_mat);
 		if (solver.info() != Eigen::Success) {
 			throw std::runtime_error("ldlt decomposition failed!");
 		}
 
-		b_mat = MatrixXd(R.rows() * 2, R.cols());
-		b_mat << Q1.transpose() * (Y - phi * params.w),
-			MatrixXd::Identity(R.rows(), R.cols()) * lambda * 0.01;
+		//b_mat = MatrixXd(R.rows() * 2, R.cols());
+		//b_mat << Q1.transpose() * (Y - phi * params.w),
+		//	MatrixXd::Identity(R.rows(), R.cols()) * lambda * 0.01;
+		b_mat = Q1.transpose() * (Y - phi * params.w);
+
 		if (solver.info() != Eigen::Success) {
 			throw std::runtime_error("ldlt solve failed!");
 		}

@@ -9,19 +9,23 @@
 #pragma once
 
 #include <Eigen/Dense>
+#include <iostream>
 
 using namespace Eigen;
+using namespace std;
 
 namespace rpm {
-	const static int D = 2;
+	const int D = 2;
 	// Annealing params
-	const static double T_start = 1500, T_end = T_start * 0.001;
-	const static double r = 0.93, I0 = 5, epsilon0 = 2 * 1e-2;
-	const static double alpha = 25.0; // 5 * 5
+	extern double T_start, T_end;
+	extern double r, I0, epsilon0;
+	extern double alpha; // 5 * 5
 	// Softassign params
-	const static double I1 = 30, epsilon1 = 1e-3;
+	extern double I1, epsilon1;
 	// Thin-plate spline params
-	const static double lambda_start = T_start * 0.2;
+	extern double lambda_start;
+
+	void set_T_start(double T);
 
 	class ThinPLateSplineParams {
 	public:
