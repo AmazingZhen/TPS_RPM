@@ -103,7 +103,7 @@ void rpm::set_T_start(double T)
 {
 	T_start = T;
 	T_end = T * 0.001;
-	lambda_start = T * 0.2;
+	lambda_start = T;
 
 	cout << "Set T_start : " << T_start << endl;
 	//getchar();
