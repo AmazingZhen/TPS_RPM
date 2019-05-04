@@ -18,14 +18,14 @@ using std::endl;
 using namespace rpm;
 
 // Annealing params
-double rpm::T_start = 1500;
-double rpm::T_end = 1500 * 0.001;
-double rpm::r = 0.93, rpm::I0 = 5, rpm::epsilon0 = 2 * 1e-2;
+double rpm::T_start = 1e5;
+double rpm::T_end = T_start * 1e-4;
+double rpm::r = 0.93, rpm::I0 = 5, rpm::epsilon0 = 1e-2;
 double rpm::alpha = 0.0; // 5 * 5
 // Softassign params
 double rpm::I1 = 30, rpm::epsilon1 = 1e-3;
 // Thin-plate spline params
-double rpm::lambda_start = 1500 * 0.2;
+double rpm::lambda_start = T_start;
 
 //#define USE_SVD_SOLVER
 
@@ -102,7 +102,7 @@ namespace {
 void rpm::set_T_start(double T)
 {
 	T_start = T;
-	T_end = T * 0.001;
+	T_end = T * 1e-4;
 	lambda_start = T;
 
 	cout << "Set T_start : " << T_start << endl;
@@ -133,7 +133,7 @@ bool rpm::estimate(
 		average_dist /= (K * N);
 		cout << "max_dist : " << max_dist << endl;
 		cout << "average_dist : " << average_dist << endl;
-		getchar();
+		set_T_start(max_dist * 0.2);
 
 		//double T_end = T_start * 1e-5;
 
@@ -151,8 +151,8 @@ bool rpm::estimate(
 
 		while (T_cur >= T_end) {
 
-			printf("T : %.2f\n\n", T_cur);
-			printf("lambda : %.2f\n\n", lambda);
+			//printf("T : %.2f\n\n", T_cur);
+			//printf("lambda : %.2f\n\n", lambda);
 
 			int iter = 0;
 			MatrixXd M_prev = M;
@@ -468,7 +468,7 @@ bool rpm::estimate_transform(
 
 		//std::cout << "d" << std::endl;
 		//std::cout << params.d << std::endl;
-		std::cout << "Estimated transform distance : " << _distance(Y_, M, params) << std::endl;
+		//std::cout << "Estimated transform distance : " << _distance(Y_, M, params) << std::endl;
 	}
 	catch (const std::exception& e) {
 		std::cout << e.what() << std::endl;

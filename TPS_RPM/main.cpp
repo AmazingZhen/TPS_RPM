@@ -13,12 +13,10 @@ int main() {
 	////cin >> data_point_num;
 	//double data_range_min = 0.0, data_range_max = 1000.0;
 	//double data_noise_mu = 0.0, data_noise_sigma = 10.0;
-	double scale = 100.0;
-	double T_start = 2000;
-	cout << "Enter T_start : ";
-	cin >> T_start;
+	double scale = 300.0;
+	cout << "Enter scale : ";
+	cin >> scale;
 	//getchar();
-	rpm::set_T_start(T_start);
 
 	//MatrixXd X = data_generate::generate_random_points(data_point_num, data_range_min, data_range_max);
 	//MatrixXd offset(X.rows(), X.cols());
@@ -75,6 +73,7 @@ int main() {
 	Mat result_image = data_visualize::visualize(params.applyTransform(false), Y);
 	imwrite("data_result.png", result_image);
 
+	getchar();
 	getchar();
 	getchar();
 

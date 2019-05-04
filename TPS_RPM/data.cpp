@@ -78,7 +78,7 @@ bool data_generate::preprocess(MatrixXd& X, MatrixXd& Y, const double scale)
 	double min_x = std::min(X.col(0).minCoeff(), X.col(0).minCoeff());
 	double max_x = std::max(X.col(0).maxCoeff(), X.col(0).maxCoeff());
 	double min_y = std::min(X.col(1).minCoeff(), Y.col(1).minCoeff());
-	double max_y = std::min(X.col(1).maxCoeff(), Y.col(1).maxCoeff());
+	double max_y = std::max(X.col(1).maxCoeff(), Y.col(1).maxCoeff());
 
 	auto normalize_mat = [](MatrixXd& m, double min_x, double max_x, double min_y, double max_y) {
 		MatrixXd t = m;
