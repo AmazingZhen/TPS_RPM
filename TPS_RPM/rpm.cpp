@@ -23,9 +23,11 @@ double rpm::T_end = T_start * 1e-4;
 double rpm::r = 0.93, rpm::I0 = 5, rpm::epsilon0 = 1e-2;
 double rpm::alpha = 0.0; // 5 * 5
 // Softassign params
-double rpm::I1 = 30, rpm::epsilon1 = 1e-3;
+double rpm::I1 = 10, rpm::epsilon1 = 1e-3;
 // Thin-plate spline params
 double rpm::lambda_start = T_start;
+
+double rpm::scale = 300;
 
 //#define USE_SVD_SOLVER
 
@@ -39,30 +41,21 @@ namespace {
 			return false;
 		}
 
-		bool res = ((m1 - m2).cwiseAbs().maxCoeff() <= tol);
-		//if (res) {
-		//	printf("equal\n");
-		//}
-
-		return res;
+		return ((m1 - m2).cwiseAbs().maxCoeff() <= tol);
 	}
 
 	inline void _soft_assign(
 		MatrixXd& assignment_matrix,
 		const int max_iteration = 30,
-		const double epsilon = 1e-3)
+		const double epsilon = 1e-5)
 	{
-		MatrixXd assignment_matrix_old;
-
 		int iter = 0;
 		while (iter++ < max_iteration){
-			//printf("	Softassign iter : %d\n", iter);
-
 			// normalizing across all rows
 #pragma omp parallel for
 			for (int r = 0; r < assignment_matrix.rows() - 1; r++) {
 				double row_sum = assignment_matrix.row(r).sum();
-				if (row_sum < 1e-5) {
+				if (row_sum < epsilon) {
 					continue;
 				}
 				assignment_matrix.row(r) /= row_sum;
@@ -72,18 +65,12 @@ namespace {
 #pragma omp parallel for
 			for (int c = 0; c < assignment_matrix.cols() - 1; c++) {
 				double col_sum = assignment_matrix.col(c).sum();
-				if (col_sum < 1e-5) {
+				if (col_sum < epsilon) {
 					continue;
 				}
 				assignment_matrix.col(c) /= col_sum;
 			}
-
-			if (_matrices_equal(assignment_matrix_old, assignment_matrix, epsilon)) {
-				break;
-			}
 		}
-
-		//printf("	Softassign iter : %d\n", iter);
 	}
 
 	inline double _distance(const MatrixXd &Y_, const MatrixXd& M, const rpm::ThinPLateSplineParams& params) {
@@ -97,12 +84,36 @@ namespace {
 		MatrixXd diff = (Y - XT).cwiseAbs();
 		return diff.maxCoeff();
 	}
+
+	// Normalize X and Y to range [0, 1].
+	inline void _preprocess(MatrixXd& X, MatrixXd& Y) {
+		double min_x = std::min(X.col(0).minCoeff(), Y.col(0).minCoeff());
+		double max_x = std::max(X.col(0).maxCoeff(), Y.col(0).maxCoeff());
+		double min_y = std::min(X.col(1).minCoeff(), Y.col(1).minCoeff());
+		double max_y = std::max(X.col(1).maxCoeff(), Y.col(1).maxCoeff());
+
+		double max_len = max((max_x - min_x), (max_y - min_y));
+
+		auto normalize_mat = [](MatrixXd& m, double min_x, double min_y, double max_len) {
+			MatrixXd t = m;
+			t.col(0).setConstant(min_x);
+			t.col(1).setConstant(min_y);
+
+			m -= t;
+			m /= max_len;
+		};
+
+		normalize_mat(X, min_x, min_y, max_len);
+		normalize_mat(Y, min_x, min_y, max_len);
+
+		return;
+	}
 }
 
 void rpm::set_T_start(double T)
 {
 	T_start = T;
-	T_end = T * 1e-5;
+	T_end = T * 1e-4;
 	lambda_start = T;
 
 	cout << "Set T_start : " << T_start << endl;
@@ -110,14 +121,21 @@ void rpm::set_T_start(double T)
 }
 
 bool rpm::estimate(
-	const MatrixXd& X,
-	const MatrixXd& Y,
+	const MatrixXd& X_,
+	const MatrixXd& Y_,
 	MatrixXd& M,
 	ThinPLateSplineParams& params)
 {
 	auto t1 = std::chrono::high_resolution_clock::now();
 
 	try {
+		if (X_.cols() != rpm::D || Y_.cols() != rpm::D) {
+			throw std::invalid_argument("rpm::estimate() only support 2d points!");
+		}
+
+		MatrixXd X = X_, Y = Y_;
+		_preprocess(X, Y);
+
 		double max_dist = 0, average_dist = 0;
 		int K = X.rows(), N = Y.rows();
 		for (int k = 0; k < K; k++) {
@@ -138,16 +156,16 @@ bool rpm::estimate(
 		//double T_end = T_start * 1e-5;
 
 		double T_cur = T_start;
-		double lambda = lambda_start;// *T_cur;
+		double lambda = lambda_start * K;
 
 		if (!init_params(X, Y, T_start, M, params)) {
 			throw std::runtime_error("init params failed!");
 		}
 
-		//char file[256];
-		//sprintf_s(file, "res/data_%.2f.png", T_cur);
-		//Mat result_image = data_visualize::visualize(params.applyTransform(false), Y);
-		//imwrite(file, result_image);
+		char file[256];
+		sprintf_s(file, "res/data_%.2f.png", T_cur);
+		Mat result_image = data_visualize::visualize(params.applyTransform(false), Y, scale);
+		imwrite(file, result_image);
 
 		while (T_cur >= T_end) {
 
@@ -163,44 +181,24 @@ bool rpm::estimate(
 				if (!estimate_correspondence(X, Y, params, T_cur, T_start, M)) {
 					throw std::runtime_error("estimate correspondence failed!");
 				}
-				//getchar();
 
 				if (!estimate_transform(X, Y, M, T_cur, lambda, params)) {
 					throw std::runtime_error("estimate transform failed!");
 				}
-				//getchar();
 
-				if (_matrices_equal(M_prev, M, epsilon0)) {  // hack!!!
-					//if (T_cur < 50.0) {
-					//	MatrixXd M_diff = (M_prev - M);
-					//	double max_m_diff = M_diff.maxCoeff();
-
-					//	cout << "M_diff : " << max_m_diff << endl;
-					//	cout << "_distance:" << _distance(Y, M, params) << endl;
-					//	cout << "_distance prev:" << _distance(Y, M_prev, params_prev) << endl;
-					//}
-
-					//if (_distance(Y, M, params) > _distance(Y, M_prev, params_prev)) {
-					//	M = M_prev;
-					//	params = params_prev;
-					//}
-
-					M = M_prev;
-					params = params_prev;
-
-					break;
-				}
+				//if (_matrices_equal(M_prev, M, epsilon0)) {  // hack!!!
+				//	//M = M_prev;
+				//	//params = params_prev;
+				//	break;
+				//}
 			}
 
 			T_cur *= r;
 			lambda *= r;
-			//lambda = lambda_start * T_cur;
 
-			//sprintf_s(file, "res/data_%.2f.png", T_cur);
-			//Mat result_image = data_visualize::visualize(params.applyTransform(false), Y);
-			//imwrite(file, result_image);
-			//cout << endl << endl;
-			//getchar();
+			sprintf_s(file, "res/data_%.5f.png", T_cur);
+			Mat result_image = data_visualize::visualize(params.applyTransform(false), Y, scale);
+			imwrite(file, result_image);
 		}
 	}
 	catch (const std::exception& e){
@@ -268,17 +266,6 @@ bool rpm::estimate_correspondence(
 	M = MatrixXd::Zero(K + 1, N + 1);
 
 	MatrixXd XT = params.applyTransform(false);
-	//MatrixXd dist = MatrixXd::Zero(K, N);
-	//for (int k = 0; k < K; k++) {
-	//	const VectorXd& x = XT.row(k);
-	//	for (int n = 0; n < N; n++) {
-	//		const VectorXd& y = Y.row(n);
-	//		
-	//		dist(k, n) = ((y - x).squaredNorm());
-	//	}
-	//}
-	//cout << "dist" << endl;
-	//cout << dist << endl;
 
 #pragma omp parallel for
 	for (int k = 0; k < K; k++) {
@@ -295,7 +282,6 @@ bool rpm::estimate_correspondence(
 	};
 
 	Vector2d center_x(XT.col(0).mean(), XT.col(1).mean()), center_y(Y.col(0).mean(), Y.col(1).mean());
-
 	const double beta_start = 1.0 / T0;
 #pragma omp parallel for
 	for (int k = 0; k < K; k++) {
@@ -310,14 +296,11 @@ bool rpm::estimate_correspondence(
 		double dist = ((y - center_x).squaredNorm());
 		M(K, n) = beta_start * std::exp(beta_start * -dist);
 	}
+
+	//M.row(K).setConstant(1.0 / N * 0.001);
+	//M.col(N).setConstant(1.0 / K * 0.001);
 	
-	//if (T < 50.0) {
-	//	cout << "M.maxCoeff() before soft assign : " << M.maxCoeff() << endl;
-	//}
 	_soft_assign(M);
-	//if (T < 50.0) {
-	//	cout << "M.maxCoeff() after soft assign : " << M.maxCoeff() << endl;
-	//}
 
 	M.conservativeResize(K, N);
 
@@ -353,57 +336,12 @@ bool rpm::estimate_transform(
 		}
 		
 		const MatrixXd& phi = params.get_phi();
-
-		//std::cout << "phi size: " << phi.rows() << ", " << phi.cols() << std::endl;
-		//std::cout << phi << std::endl;
-
 		const MatrixXd& Q = params.get_Q();
 		const MatrixXd& R_ = params.get_R();
-
-		////std::cout << "QR" << std::endl;
-		////std::cout << Q * R_ << std::endl;
-		////std::cout << "X" << std::endl;
-		////std::cout << X << std::endl;
-		////getchar();
 
 		MatrixXd Q1 = Q.block(0, 0, K, dim), Q2 = Q.block(0, dim, K, K - dim);
 		MatrixXd R = R_.block(0, 0, dim, dim);
 
-		//std::cout << "Q1 size: " << Q1.rows() << ", " << Q1.cols() << std::endl;
-		//std::cout << Q1 << std::endl;
-		//std::cout << "Q2 size: " << Q2.rows() << ", " << Q2.cols() << std::endl;
-		//std::cout << Q2 << std::endl;
-		//std::cout << "R size: " << R.rows() << ", " << R.cols() << std::endl;
-		//std::cout << R << std::endl;
-
-#ifdef USE_SVD_SOLVER
-		BDCSVD<MatrixXd> solver;
-		MatrixXd L_mat = (Q2.transpose() * phi * Q2 + MatrixXd::Constant(K - dim, K - dim, lambda * T));
-
-		solver.compute(L_mat, ComputeThinU | ComputeThinV);
-
-		MatrixXd b_mat = Q2.transpose() * Y;
-		MatrixXd gamma = solver.solve(b_mat);
-
-		params.w = Q2 * gamma;
-
-		//std::cout << "w" << std::endl;
-		//std::cout << params.w << std::endl;
-		//getchar();
-
-		// Add regular term lambdaI * d = lambdaI * I
-		L_mat = MatrixXd(R.rows() * 2, R.cols());
-		L_mat << R,
-			MatrixXd::Constant(R.rows(), R.cols(), lambda * 0.01 * T);
-
-		solver.compute(L_mat, ComputeThinU | ComputeThinV);
-
-		b_mat = MatrixXd(R.rows() * 2, R.cols());
-		b_mat << Q1.transpose() * (Y - phi * params.w),
-			MatrixXd::Constant(R.rows(), R.cols(), lambda * 0.01 * T);
-
-		params.d = solver.solve(b_mat);
-#else
 		LDLT<MatrixXd> solver;
 		MatrixXd L_mat = (Q2.transpose() * phi * Q2 + (MatrixXd::Identity(K - dim, K - dim) * lambda));
 
@@ -420,55 +358,32 @@ bool rpm::estimate_transform(
 
 		params.w = Q2 * gamma;
 
-		//std::cout << "w" << std::endl;
-		//std::cout << params.w << std::endl;
-		//getchar();
 
 		// Add regular term lambdaI * d = lambdaI * I
-		//L_mat = MatrixXd(R.rows() * 2, R.cols());
-		//L_mat << R,
-		//	MatrixXd::Identity(R.rows(), R.cols()) * lambda * 0.01;
-		L_mat = R;
+		L_mat = MatrixXd(R.rows() * 2, R.cols());
+		L_mat << R,
+			MatrixXd::Identity(R.rows(), R.cols()) * lambda * 0.01;
+		//L_mat = R;
 
 		solver.compute(L_mat.transpose() * L_mat);
 		if (solver.info() != Eigen::Success) {
 			throw std::runtime_error("ldlt decomposition failed!");
 		}
 
-		//b_mat = MatrixXd(R.rows() * 2, R.cols());
-		//b_mat << Q1.transpose() * (Y - phi * params.w),
-		//	MatrixXd::Identity(R.rows(), R.cols()) * lambda * 0.01;
-		b_mat = Q1.transpose() * (Y - phi * params.w);
+		b_mat = MatrixXd(R.rows() * 2, R.cols());
+		b_mat << Q1.transpose() * (Y - phi * params.w),
+			MatrixXd::Identity(R.rows(), R.cols()) * lambda * 0.01;
+		//b_mat = Q1.transpose() * (Y - phi * params.w);
 
+		params.d = solver.solve(L_mat.transpose() * b_mat);
 		if (solver.info() != Eigen::Success) {
 			throw std::runtime_error("ldlt solve failed!");
 		}
 
-		params.d = solver.solve(L_mat.transpose() * b_mat);
-
-#endif // USE_SVD_SOLVER
-
-
-		//{  // Assume d = I(3, 3)
-		//	LDLT<MatrixXd> solver;
-		//	MatrixXd L_mat = (phi + MatrixXd::Constant(K, K, lambda));
-		//	solver.compute(L_mat.transpose() * L_mat);
-		//	if (solver.info() != Eigen::Success) {
-		//		throw std::runtime_error("ldlt decomposition failed!");
-		//	}
-
-		//	MatrixXd b_mat = Y - X;
-		//	params.w = solver.solve(L_mat.transpose() * b_mat);
-		//	if (solver.info() != Eigen::Success) {
-		//		throw std::runtime_error("ldlt solve failed!");
-		//	}
-		// 
-		// params.d = MatrixXd::Identity(D + 1, D + 1);
-		//}
-
-		//std::cout << "d" << std::endl;
-		//std::cout << params.d << std::endl;
-		//std::cout << "Estimated transform distance : " << _distance(Y_, M, params) << std::endl;
+		// Another form of regularize d.
+		//MatrixXd A = (R.transpose() * R + 0.01 * lambda * MatrixXd::Identity(dim, dim)).inverse()
+		//	* (R.transpose() * ((Q1.transpose() * (Y - phi * params.w)) - R));
+		//params.d = A + MatrixXd::Identity(dim, dim);
 	}
 	catch (const std::exception& e) {
 		std::cout << e.what() << std::endl;

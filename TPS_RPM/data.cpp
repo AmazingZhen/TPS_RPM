@@ -73,37 +73,79 @@ MatrixXd data_generate::read_from_file(const string & filename)
 	return X;
 }
 
-bool data_generate::preprocess(MatrixXd& X, MatrixXd& Y, const double scale)
+void data_generate::add_outlier(MatrixXd& X, const int num)
 {
-	double min_x = std::min(X.col(0).minCoeff(), X.col(0).minCoeff());
-	double max_x = std::max(X.col(0).maxCoeff(), X.col(0).maxCoeff());
+	if (X.cols() != rpm::D) {
+		return;
+	}
+
+	MatrixXd X_noise = add_gaussian_noise(X, 0, 0.1);
+
+	std::default_random_engine gen;
+	std::uniform_real_distribution<double> dist(0, X.rows());
+	auto random_point = bind(dist, gen);
+
+	MatrixXd X_(X.rows() + num, X.cols());
+	for (int x_i = 0; x_i < X.rows(); x_i++) {
+		X_.row(x_i) = X.row(x_i);
+	}
+
+	for (int x_i = 0; x_i < num; x_i++) {
+		X_.row(X.rows() + x_i) = X_noise.row((int)random_point());
+	}
+
+	X = X_;
+}
+
+bool data_generate::preprocess(MatrixXd& X, MatrixXd& Y)
+{
+	double min_x = std::min(X.col(0).minCoeff(), Y.col(0).minCoeff());
+	double max_x = std::max(X.col(0).maxCoeff(), Y.col(0).maxCoeff());
 	double min_y = std::min(X.col(1).minCoeff(), Y.col(1).minCoeff());
 	double max_y = std::max(X.col(1).maxCoeff(), Y.col(1).maxCoeff());
 
-	auto normalize_mat = [](MatrixXd& m, double min_x, double max_x, double min_y, double max_y) {
+	cout << "min_x" << min_x << endl;
+	cout << "max_x" << max_x << endl;
+	cout << "min_y" << min_y << endl;
+	cout << "max_y" << max_y << endl;
+
+	double max_len = max((max_x - min_x), (max_y - min_y));
+
+	cout << "max_len" << max_len << endl;
+
+	auto normalize_mat = [](MatrixXd& m, double min_x, double min_y, double max_len) {
 		MatrixXd t = m;
 		t.col(0).setConstant(min_x);
 		t.col(1).setConstant(min_y);
 
 		m -= t;
-		m.col(0) *= (1.0 / (max_x - min_x));
-		m.col(1) *= (1.0 / (max_y - min_y));
+		m /= max_len;
 	};
 
-	normalize_mat(X, min_x, max_x, min_y, max_y);
-	normalize_mat(Y, min_x, max_x, min_y, max_y);
+	normalize_mat(X, min_x, min_y, max_len);
+	normalize_mat(Y, min_x, min_y, max_len);
 
-	X *= scale;
-	Y *= scale;
+	min_x = std::min(X.col(0).minCoeff(), Y.col(0).minCoeff());
+	max_x = std::max(X.col(0).maxCoeff(), Y.col(0).maxCoeff());
+	min_y = std::min(X.col(1).minCoeff(), Y.col(1).minCoeff());
+	max_y = std::max(X.col(1).maxCoeff(), Y.col(1).maxCoeff());
+
+	cout << "min_x" << min_x << endl;
+	cout << "max_x" << max_x << endl;
+	cout << "min_y" << min_y << endl;
+	cout << "max_y" << max_y << endl;
 
 	return true;
 }
 
-Mat data_visualize::visualize(const MatrixXd& X, const MatrixXd& Y, const bool draw_line)
+Mat data_visualize::visualize(const MatrixXd& X_, const MatrixXd& Y_, const double scale, const bool draw_line)
 {
-	if (X.cols() != Y.cols() || X.cols() != rpm::D) {
+	if (X_.cols() != Y_.cols() || X_.cols() != rpm::D) {
 		throw std::invalid_argument("Only support 2d points now!");
 	}
+
+	MatrixXd X = X_ * scale;
+	MatrixXd Y = Y_ * scale;
 
 	const double min_x = std::min(X.col(0).minCoeff(), Y.col(0).minCoeff());
 	const double max_x = std::max(X.col(0).maxCoeff(), Y.col(0).maxCoeff());
@@ -125,8 +167,8 @@ Mat data_visualize::visualize(const MatrixXd& X, const MatrixXd& Y, const bool d
 	Mat img(image_height, image_width, CV_8UC3);
 	img = cv::Scalar(0, 0, 0);
 
-	if (draw_line && X.rows() == Y.rows()) {
-		for (int i = 0; i < X.rows(); i++) {
+	if (draw_line) {
+		for (int i = 0; i < min(X.rows(), Y.rows()); i++) {
 			const Vector2d& x = X.row(i), &y = Y.row(i);
 
 			cv::line(img,

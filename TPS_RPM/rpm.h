@@ -24,6 +24,9 @@ namespace rpm {
 	extern double I1, epsilon1;
 	// Thin-plate spline params
 	extern double lambda_start;
+	extern double r_lambda;
+
+	extern double scale;  // for visualize
 
 	void set_T_start(double T);
 
