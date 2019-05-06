@@ -30,7 +30,7 @@ double rpm::lambda_start = T_start;
 //#define USE_SVD_SOLVER
 
 namespace {
-	bool _matrices_equal(
+	inline bool _matrices_equal(
 		const MatrixXd &m1,
 		const MatrixXd &m2,
 		const double tol = 1e-3)
@@ -47,7 +47,7 @@ namespace {
 		return res;
 	}
 
-	void _soft_assign(
+	inline void _soft_assign(
 		MatrixXd& assignment_matrix,
 		const int max_iteration = 30,
 		const double epsilon = 1e-3)
@@ -86,7 +86,7 @@ namespace {
 		//printf("	Softassign iter : %d\n", iter);
 	}
 
-	double _distance(const MatrixXd &Y_, const MatrixXd& M, const rpm::ThinPLateSplineParams& params) {
+	inline double _distance(const MatrixXd &Y_, const MatrixXd& M, const rpm::ThinPLateSplineParams& params) {
 		MatrixXd Y = rpm::apply_correspondence(Y_, M);
 		MatrixXd XT = params.applyTransform(true);
 
@@ -102,7 +102,7 @@ namespace {
 void rpm::set_T_start(double T)
 {
 	T_start = T;
-	T_end = T * 1e-4;
+	T_end = T * 1e-5;
 	lambda_start = T;
 
 	cout << "Set T_start : " << T_start << endl;
@@ -133,7 +133,7 @@ bool rpm::estimate(
 		average_dist /= (K * N);
 		cout << "max_dist : " << max_dist << endl;
 		cout << "average_dist : " << average_dist << endl;
-		set_T_start(max_dist * 0.2);
+		set_T_start(max_dist);
 
 		//double T_end = T_start * 1e-5;
 
@@ -144,10 +144,10 @@ bool rpm::estimate(
 			throw std::runtime_error("init params failed!");
 		}
 
-		char file[256];
-		sprintf_s(file, "res/data_%.2f.png", T_cur);
-		Mat result_image = data_visualize::visualize(params.applyTransform(false), Y);
-		imwrite(file, result_image);
+		//char file[256];
+		//sprintf_s(file, "res/data_%.2f.png", T_cur);
+		//Mat result_image = data_visualize::visualize(params.applyTransform(false), Y);
+		//imwrite(file, result_image);
 
 		while (T_cur >= T_end) {
 
@@ -155,7 +155,6 @@ bool rpm::estimate(
 			//printf("lambda : %.2f\n\n", lambda);
 
 			int iter = 0;
-			MatrixXd M_prev = M;
 
 			while (iter++ < I0) {
 				//printf("	Annealing iter : %d\n", iter);
@@ -171,7 +170,7 @@ bool rpm::estimate(
 				}
 				//getchar();
 
-				if (_matrices_equal(M_prev, M, epsilon0)) {
+				if (_matrices_equal(M_prev, M, epsilon0)) {  // hack!!!
 					//if (T_cur < 50.0) {
 					//	MatrixXd M_diff = (M_prev - M);
 					//	double max_m_diff = M_diff.maxCoeff();
@@ -186,21 +185,20 @@ bool rpm::estimate(
 					//	params = params_prev;
 					//}
 
+					M = M_prev;
+					params = params_prev;
+
 					break;
 				}
 			}
-
-			//if (_matrices_equal(M_prev, M, epsilon1)) {
-			//	break;
-			//}
 
 			T_cur *= r;
 			lambda *= r;
 			//lambda = lambda_start * T_cur;
 
-			sprintf_s(file, "res/data_%.2f.png", T_cur);
-			Mat result_image = data_visualize::visualize(params.applyTransform(false), Y);
-			imwrite(file, result_image);
+			//sprintf_s(file, "res/data_%.2f.png", T_cur);
+			//Mat result_image = data_visualize::visualize(params.applyTransform(false), Y);
+			//imwrite(file, result_image);
 			//cout << endl << endl;
 			//getchar();
 		}
@@ -299,12 +297,14 @@ bool rpm::estimate_correspondence(
 	Vector2d center_x(XT.col(0).mean(), XT.col(1).mean()), center_y(Y.col(0).mean(), Y.col(1).mean());
 
 	const double beta_start = 1.0 / T0;
+#pragma omp parallel for
 	for (int k = 0; k < K; k++) {
 		const Vector2d& x = XT.row(k);
 		double dist = ((center_y - x).squaredNorm());
 		M(k, N) = beta_start * std::exp(beta_start * -dist);
 	}
 
+#pragma omp parallel for
 	for (int n = 0; n < N; n++) {
 		const Vector2d& y = Y.row(n);
 		double dist = ((y - center_x).squaredNorm());

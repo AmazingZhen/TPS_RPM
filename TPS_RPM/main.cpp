@@ -4,9 +4,33 @@
 #include "rpm.h"
 #include "data.h"
 
+namespace fs = std::experimental::filesystem;
+
+void delete_directory(string dir) {
+	fs::path p(dir);
+	if (fs::exists(p) && fs::is_directory(p))
+	{
+		fs::directory_iterator end;
+		for (fs::directory_iterator it(p); it != end; ++it)
+		{
+			try
+			{
+				if (fs::is_regular_file(it->status()))
+				{
+					fs::remove(it->path());
+				}
+			}
+			catch (const std::exception &ex)
+			{
+				ex;
+			}
+		}
+	}
+}
+
 int main() {
-	std::experimental::filesystem::remove_all("res/");
-	std::experimental::filesystem::create_directory("res/");
+	delete_directory("res/");
+	//getchar();
 
 	//int data_point_num = 100;
 	////cout << "Enter data_point_num : ";
@@ -14,8 +38,8 @@ int main() {
 	//double data_range_min = 0.0, data_range_max = 1000.0;
 	//double data_noise_mu = 0.0, data_noise_sigma = 10.0;
 	double scale = 300.0;
-	cout << "Enter scale : ";
-	cin >> scale;
+	//cout << "Enter scale : ";
+	//cin >> scale;
 	//getchar();
 
 	//MatrixXd X = data_generate::generate_random_points(data_point_num, data_range_min, data_range_max);
@@ -74,8 +98,8 @@ int main() {
 	imwrite("data_result.png", result_image);
 
 	getchar();
-	getchar();
-	getchar();
+	//getchar();
+	//getchar();
 
 	return 0;
 }
