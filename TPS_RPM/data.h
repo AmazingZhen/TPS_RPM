@@ -26,7 +26,7 @@ namespace data_generate {
 	MatrixXd generate_random_points(const int point_num, const double range_min, const double range_max);
 	MatrixXd add_gaussian_noise(const MatrixXd& X, const double mu, const double sigma);
 	MatrixXd read_from_file(const string& filename);
-	void add_outlier(MatrixXd& X, const int num);
+	void add_outlier(MatrixXd& X, const double factor = 0.3);
 
 	// Normalize x and y range to [0, 1] then scale it.
 	bool preprocess(MatrixXd& X, MatrixXd& Y);

@@ -14,6 +14,9 @@
 using namespace Eigen;
 using namespace std;
 
+//#define RPM_USE_BOTHSIDE_OUTLIER_REJECTION
+#define RPM_REGULARIZE_AFFINE_PARAM
+
 namespace rpm {
 	const int D = 2;
 	// Annealing params

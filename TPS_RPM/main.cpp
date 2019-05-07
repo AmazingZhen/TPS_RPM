@@ -34,15 +34,16 @@ int main() {
 	cout << "Enter scale : ";
 	cin >> rpm::scale;
 	getchar();
-	 
+	
 	MatrixXd X = data_generate::read_from_file("data/fish2_source.txt");
 	MatrixXd Y = data_generate::read_from_file("data/fish2_target.txt");
 
 	Mat origin_image = data_visualize::visualize(X, Y, rpm::scale);
 	imwrite("data_origin.png", origin_image);
-	data_generate::add_outlier(Y, 50);
+	data_generate::add_outlier(X, 0.3);
 	Mat origin_image_outlier = data_visualize::visualize(X, Y, rpm::scale);
 	imwrite("data_origin_outlier.png", origin_image_outlier);
+	getchar();
 
 	rpm::ThinPlateSplineParams params(X);
 	MatrixXd M;

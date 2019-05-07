@@ -114,7 +114,7 @@ void rpm::set_T_start(double T)
 {
 	T_start = T;
 	T_end = T * 1e-4;
-	lambda_start = T * 10;
+	lambda_start = T * 3;
 
 	cout << "Set T_start : " << T_start << endl;
 	//getchar();
@@ -205,18 +205,18 @@ bool rpm::estimate(
 
 		// Re-estimate real ThinPlateSplineParams on unnormalized data.
 
-		MatrixXd M_binary = MatrixXd::Zero(K, N);
-		for (int k = 0; k < K; k++) {
-			Eigen::Index n;
-			double max_coeff = M.row(k).maxCoeff(&n);
-			if (max_coeff > 1.0 / N) {
-				M_binary(k, n) = 1;
-			}
-		}
-		M = M_binary;
+		//MatrixXd M_binary = MatrixXd::Zero(K, N);
+		//for (int k = 0; k < K; k++) {
+		//	Eigen::Index n;
+		//	double max_coeff = M.row(k).maxCoeff(&n);
+		//	if (max_coeff > 1.0 / N) {
+		//		M_binary(k, n) = 1;
+		//	}
+		//}
+		//M = M_binary;
 
 		params = ThinPlateSplineParams(X_);
-		estimate_transform(X_, Y_, M_binary, 0, params);
+		estimate_transform(X_, Y_, M, lambda, params);
 	}
 	catch (const std::exception& e){
 		std::cout << e.what();
@@ -298,24 +298,24 @@ bool rpm::estimate_correspondence(
 		}
 	};
 
-	Vector2d center_x(XT.col(0).mean(), XT.col(1).mean()), center_y(Y.col(0).mean(), Y.col(1).mean());
-	const double beta_start = 1.0 / T0;
-#pragma omp parallel for
-	for (int k = 0; k < K; k++) {
-		const Vector2d& x = XT.row(k);
-		double dist = ((center_y - x).squaredNorm());
-		M(k, N) = beta_start * std::exp(beta_start * -dist);
-	}
+//	Vector2d center_x(XT.col(0).mean(), XT.col(1).mean()), center_y(Y.col(0).mean(), Y.col(1).mean());
+//	const double beta_start = 1.0 / T0;
+//#pragma omp parallel for
+//	for (int k = 0; k < K; k++) {
+//		const Vector2d& x = XT.row(k);
+//		double dist = ((center_y - x).squaredNorm());
+//		M(k, N) = beta_start * std::exp(beta_start * -dist);
+//	}
+//
+//#pragma omp parallel for
+//	for (int n = 0; n < N; n++) {
+//		const Vector2d& y = Y.row(n);
+//		double dist = ((y - center_x).squaredNorm());
+//		M(K, n) = beta_start * std::exp(beta_start * -dist);
+//	}
 
-#pragma omp parallel for
-	for (int n = 0; n < N; n++) {
-		const Vector2d& y = Y.row(n);
-		double dist = ((y - center_x).squaredNorm());
-		M(K, n) = beta_start * std::exp(beta_start * -dist);
-	}
-
-	//M.row(K).setConstant(1.0 / N * 0.001);
-	//M.col(N).setConstant(1.0 / K * 0.001);
+	M.row(K).setConstant(1.0 / N * 0.01);
+	M.col(N).setConstant(1.0 / K * 0.01);
 	
 	_soft_assign(M);
 
@@ -358,6 +358,59 @@ bool rpm::estimate_transform(
 		MatrixXd Q1 = Q.block(0, 0, K, dim), Q2 = Q.block(0, dim, K, K - dim);
 		MatrixXd R = R_.block(0, 0, dim, dim);
 
+#ifdef RPM_USE_BOTHSIDE_OUTLIER_REJECTION
+		MatrixXd W = MatrixXd::Zero(K, K);
+		for (int k = 0; k < K; k++) {
+			W(k, k) = 1.0 / std::max(M.row(k).sum(), 1e-5);
+		}
+
+		MatrixXd T = phi + lambda * W;
+
+		LDLT<MatrixXd> solver;
+		MatrixXd L_mat = Q2.transpose() * T * Q2;
+
+		solver.compute(L_mat.transpose() * L_mat);
+		if (solver.info() != Eigen::Success) {
+			throw std::runtime_error("Param w ldlt decomposition failed!");
+		}
+
+		MatrixXd b_mat = Q2.transpose() * Y;
+		MatrixXd gamma = solver.solve(L_mat.transpose() * b_mat);
+		if (solver.info() != Eigen::Success) {
+			throw std::runtime_error("Param w ldlt solve failed!");
+		}
+
+		params.w = Q2 * gamma;
+
+
+#ifdef RPM_REGULARIZE_AFFINE_PARAM  // Add regular term lambdaI * d = lambdaI * I
+		double lambda_d = lambda * 0.01;
+
+		L_mat = MatrixXd(R.rows() * 2, R.cols());
+		L_mat << R,
+			MatrixXd::Identity(R.rows(), R.cols()) * lambda_d;
+#else
+		L_mat = R;
+#endif // RPM_REGULARIZE_AFFINE_PARAM
+
+		solver.compute(L_mat.transpose() * L_mat);
+		if (solver.info() != Eigen::Success) {
+			throw std::runtime_error("Param d ldlt decomposition failed!");
+		}
+
+#ifdef RPM_REGULARIZE_AFFINE_PARAM
+		b_mat = MatrixXd(R.rows() * 2, R.cols());
+		b_mat << Q1.transpose() * (Y - T * params.w),
+			MatrixXd::Identity(R.rows(), R.cols()) * lambda_d;
+#else
+		b_mat = Q1.transpose() * (Y - K * params.w);
+#endif // RPM_REGULARIZE_AFFINE_PARAM
+
+		params.d = solver.solve(L_mat.transpose() * b_mat);
+		if (solver.info() != Eigen::Success) {
+			throw std::runtime_error("Param d ldlt solve failed!");
+		}
+#else
 		LDLT<MatrixXd> solver;
 		MatrixXd L_mat = (Q2.transpose() * phi * Q2 + (MatrixXd::Identity(K - dim, K - dim) * lambda));
 
@@ -374,22 +427,29 @@ bool rpm::estimate_transform(
 
 		params.w = Q2 * gamma;
 
+
+#ifdef RPM_REGULARIZE_AFFINE_PARAM  // Add regular term lambdaI * d = lambdaI * I
 		double lambda_d = lambda * 0.01;
-		// Add regular term lambdaI * d = lambdaI * I
+
 		L_mat = MatrixXd(R.rows() * 2, R.cols());
 		L_mat << R,
 			MatrixXd::Identity(R.rows(), R.cols()) * lambda_d;
-		//L_mat = R;
+#else
+		L_mat = R;
+#endif // RPM_REGULARIZE_AFFINE_PARAM
 
 		solver.compute(L_mat.transpose() * L_mat);
 		if (solver.info() != Eigen::Success) {
 			throw std::runtime_error("ldlt decomposition failed!");
 		}
 
+#ifdef RPM_REGULARIZE_AFFINE_PARAM
 		b_mat = MatrixXd(R.rows() * 2, R.cols());
 		b_mat << Q1.transpose() * (Y - phi * params.w),
 			MatrixXd::Identity(R.rows(), R.cols()) * lambda_d;
-		//b_mat = Q1.transpose() * (Y - phi * params.w);
+#else
+		b_mat = Q1.transpose() * (Y - phi * params.w);
+#endif // RPM_REGULARIZE_AFFINE_PARAM
 
 		params.d = solver.solve(L_mat.transpose() * b_mat);
 		if (solver.info() != Eigen::Success) {
@@ -400,6 +460,8 @@ bool rpm::estimate_transform(
 		//MatrixXd A = (R.transpose() * R + 0.01 * lambda * MatrixXd::Identity(dim, dim)).inverse()
 		//	* (R.transpose() * ((Q1.transpose() * (Y - phi * params.w)) - R));
 		//params.d = A + MatrixXd::Identity(dim, dim);
+
+#endif // RPM_USE_BOTHSIDE_OUTLIER_REJECTION
 	}
 	catch (const std::exception& e) {
 		std::cout << e.what() << std::endl;
@@ -425,7 +487,12 @@ MatrixXd rpm::apply_correspondence(const MatrixXd& Y_, const MatrixXd& M)
 	Y.leftCols(rpm::D) = Y_;
 	Y.rightCols(1).setConstant(1);
 	
-	return M * Y;
+	MatrixXd MY = M * Y;
+	for (int k = 0; k < M.rows(); k++) {
+		MY.row(k) /= std::max(M.row(k).sum(), 1e-5);
+	}
+
+	return MY;
 }
 
 rpm::ThinPlateSplineParams::ThinPlateSplineParams(const MatrixXd & X)

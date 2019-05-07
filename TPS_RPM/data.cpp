@@ -73,17 +73,23 @@ MatrixXd data_generate::read_from_file(const string & filename)
 	return X;
 }
 
-void data_generate::add_outlier(MatrixXd& X, const int num)
+void data_generate::add_outlier(MatrixXd& X, const double factor)
 {
 	if (X.cols() != rpm::D) {
 		return;
 	}
 
-	MatrixXd X_noise = add_gaussian_noise(X, 0, 0.2);
+	const int num = X.rows() * factor;
 
-	std::default_random_engine gen;
-	std::uniform_real_distribution<double> dist(0, X.rows());
-	auto random_point = bind(dist, gen);
+	double min_x = X.col(0).minCoeff();
+	double max_x = X.col(0).maxCoeff();
+	double min_y = X.col(1).minCoeff();
+	double max_y = X.col(1).maxCoeff();
+
+	//std::random_device rd;
+	std::default_random_engine gen_x(0), gen_y(1);
+	std::uniform_real_distribution<double> dist_x(min_x, max_x), dist_y(min_y, max_y);
+	auto random_x = bind(dist_x, gen_x), random_y = bind(dist_y, gen_y);
 
 	MatrixXd X_(X.rows() + num, X.cols());
 	for (int x_i = 0; x_i < X.rows(); x_i++) {
@@ -91,7 +97,10 @@ void data_generate::add_outlier(MatrixXd& X, const int num)
 	}
 
 	for (int x_i = 0; x_i < num; x_i++) {
-		X_.row(X.rows() + x_i) = X_noise.row((int)random_point());
+		Vector2d random_point(random_x(), random_y());
+		X_.row(X.rows() + x_i) = random_point;
+		//cout << x_i << endl;
+		//cout << random_point << endl;
 	}
 
 	X = X_;
