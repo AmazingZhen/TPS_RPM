@@ -30,9 +30,9 @@ namespace rpm {
 
 	void set_T_start(double T);
 
-	class ThinPLateSplineParams {
+	class ThinPlateSplineParams {
 	public:
-		ThinPLateSplineParams(const MatrixXd &X);
+		ThinPlateSplineParams(const MatrixXd &X);
 
 		// (D + 1) * (D + 1) matrix representing the affine transformation.
 		MatrixXd d;
@@ -69,7 +69,7 @@ namespace rpm {
 		const MatrixXd& X,
 		const MatrixXd& Y,
 		MatrixXd& M,
-		ThinPLateSplineParams& params
+		ThinPlateSplineParams& params
 	);
 
 	bool init_params(
@@ -77,7 +77,7 @@ namespace rpm {
 		const MatrixXd& Y,
 		const double T,
 		MatrixXd& M,
-		ThinPLateSplineParams& params
+		ThinPlateSplineParams& params
 	);
 
 	// Compute the thin-plate spline parameters from two point sets.
@@ -93,7 +93,7 @@ namespace rpm {
 	bool estimate_correspondence(
 		const MatrixXd& X,
 		const MatrixXd& Y,
-		const ThinPLateSplineParams& params,
+		const ThinPlateSplineParams& params,
 		const double T,
 		const double T0,
 		MatrixXd& M
@@ -112,9 +112,8 @@ namespace rpm {
 		const MatrixXd& X,
 		const MatrixXd& Y,
 		const MatrixXd& M,
-		const double T,
 		const double lambda,
-		ThinPLateSplineParams& params
+		ThinPlateSplineParams& params
 	);
 
 	MatrixXd apply_correspondence(

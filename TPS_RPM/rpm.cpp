@@ -18,7 +18,7 @@ using std::endl;
 using namespace rpm;
 
 // Annealing params
-double rpm::T_start = 1e5;
+double rpm::T_start = 1;
 double rpm::T_end = T_start * 1e-4;
 double rpm::r = 0.93, rpm::I0 = 5, rpm::epsilon0 = 1e-2;
 double rpm::alpha = 0.0; // 5 * 5
@@ -73,7 +73,7 @@ namespace {
 		}
 	}
 
-	inline double _distance(const MatrixXd &Y_, const MatrixXd& M, const rpm::ThinPLateSplineParams& params) {
+	inline double _distance(const MatrixXd &Y_, const MatrixXd& M, const rpm::ThinPlateSplineParams& params) {
 		MatrixXd Y = rpm::apply_correspondence(Y_, M);
 		MatrixXd XT = params.applyTransform(true);
 
@@ -114,7 +114,7 @@ void rpm::set_T_start(double T)
 {
 	T_start = T;
 	T_end = T * 1e-4;
-	lambda_start = T;
+	lambda_start = T * 10;
 
 	cout << "Set T_start : " << T_start << endl;
 	//getchar();
@@ -124,7 +124,7 @@ bool rpm::estimate(
 	const MatrixXd& X_,
 	const MatrixXd& Y_,
 	MatrixXd& M,
-	ThinPLateSplineParams& params)
+	ThinPlateSplineParams& params)
 {
 	auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -135,6 +135,8 @@ bool rpm::estimate(
 
 		MatrixXd X = X_, Y = Y_;
 		_preprocess(X, Y);
+
+		params = ThinPlateSplineParams(X);
 
 		double max_dist = 0, average_dist = 0;
 		int K = X.rows(), N = Y.rows();
@@ -177,12 +179,12 @@ bool rpm::estimate(
 			while (iter++ < I0) {
 				//printf("	Annealing iter : %d\n", iter);
 				MatrixXd M_prev = M;
-				ThinPLateSplineParams params_prev = params;
+				ThinPlateSplineParams params_prev = params;
 				if (!estimate_correspondence(X, Y, params, T_cur, T_start, M)) {
 					throw std::runtime_error("estimate correspondence failed!");
 				}
 
-				if (!estimate_transform(X, Y, M, T_cur, lambda, params)) {
+				if (!estimate_transform(X, Y, M, lambda, params)) {
 					throw std::runtime_error("estimate transform failed!");
 				}
 
@@ -200,6 +202,21 @@ bool rpm::estimate(
 			Mat result_image = data_visualize::visualize(params.applyTransform(false), Y, scale);
 			imwrite(file, result_image);
 		}
+
+		// Re-estimate real ThinPlateSplineParams on unnormalized data.
+
+		MatrixXd M_binary = MatrixXd::Zero(K, N);
+		for (int k = 0; k < K; k++) {
+			Eigen::Index n;
+			double max_coeff = M.row(k).maxCoeff(&n);
+			if (max_coeff > 1.0 / N) {
+				M_binary(k, n) = 1;
+			}
+		}
+		M = M_binary;
+
+		params = ThinPlateSplineParams(X_);
+		estimate_transform(X_, Y_, M_binary, 0, params);
 	}
 	catch (const std::exception& e){
 		std::cout << e.what();
@@ -219,7 +236,7 @@ bool rpm::init_params(
 	const MatrixXd& Y,
 	const double T,
 	MatrixXd& M,
-	ThinPLateSplineParams& params)
+	ThinPlateSplineParams& params)
 {
 	const int K = X.rows(), N = Y.rows();
 
@@ -255,7 +272,7 @@ bool rpm::init_params(
 bool rpm::estimate_correspondence(
 	const MatrixXd& X,
 	const MatrixXd& Y,
-	const ThinPLateSplineParams& params,
+	const ThinPlateSplineParams& params,
 	const double T,
 	const double T0,
 	MatrixXd& M)
@@ -311,9 +328,8 @@ bool rpm::estimate_transform(
 	const MatrixXd& X_,
 	const MatrixXd& Y_,
 	const MatrixXd& M_,
-	const double T,
 	const double lambda,
-	ThinPLateSplineParams& params)
+	ThinPlateSplineParams& params)
 {
 	//auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -358,11 +374,11 @@ bool rpm::estimate_transform(
 
 		params.w = Q2 * gamma;
 
-
+		double lambda_d = lambda * 0.01;
 		// Add regular term lambdaI * d = lambdaI * I
 		L_mat = MatrixXd(R.rows() * 2, R.cols());
 		L_mat << R,
-			MatrixXd::Identity(R.rows(), R.cols()) * lambda * 0.01;
+			MatrixXd::Identity(R.rows(), R.cols()) * lambda_d;
 		//L_mat = R;
 
 		solver.compute(L_mat.transpose() * L_mat);
@@ -372,7 +388,7 @@ bool rpm::estimate_transform(
 
 		b_mat = MatrixXd(R.rows() * 2, R.cols());
 		b_mat << Q1.transpose() * (Y - phi * params.w),
-			MatrixXd::Identity(R.rows(), R.cols()) * lambda * 0.01;
+			MatrixXd::Identity(R.rows(), R.cols()) * lambda_d;
 		//b_mat = Q1.transpose() * (Y - phi * params.w);
 
 		params.d = solver.solve(L_mat.transpose() * b_mat);
@@ -412,7 +428,7 @@ MatrixXd rpm::apply_correspondence(const MatrixXd& Y_, const MatrixXd& M)
 	return M * Y;
 }
 
-rpm::ThinPLateSplineParams::ThinPLateSplineParams(const MatrixXd & X)
+rpm::ThinPlateSplineParams::ThinPlateSplineParams(const MatrixXd & X)
 {
 	const int K = X.rows();
 
@@ -447,7 +463,7 @@ rpm::ThinPLateSplineParams::ThinPLateSplineParams(const MatrixXd & X)
 	d = MatrixXd::Identity(rpm::D + 1, rpm::D + 1);
 }
 
-MatrixXd rpm::ThinPLateSplineParams::applyTransform(bool homo) const
+MatrixXd rpm::ThinPlateSplineParams::applyTransform(bool homo) const
 {
 	MatrixXd XT_ = X * d + phi * w;
 	if (homo) {
@@ -462,7 +478,7 @@ MatrixXd rpm::ThinPLateSplineParams::applyTransform(bool homo) const
 	return XT;
 }
 
-VectorXd rpm::ThinPLateSplineParams::applyTransform(int x_i) const
+VectorXd rpm::ThinPlateSplineParams::applyTransform(int x_i) const
 {
 	VectorXd xt = X.row(x_i) * d + phi.row(x_i) * w;
 

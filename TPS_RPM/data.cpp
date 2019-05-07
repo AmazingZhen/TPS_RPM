@@ -79,7 +79,7 @@ void data_generate::add_outlier(MatrixXd& X, const int num)
 		return;
 	}
 
-	MatrixXd X_noise = add_gaussian_noise(X, 0, 0.1);
+	MatrixXd X_noise = add_gaussian_noise(X, 0, 0.2);
 
 	std::default_random_engine gen;
 	std::uniform_real_distribution<double> dist(0, X.rows());
