@@ -12,6 +12,9 @@
 #include <iostream>
 #include <fstream>
 
+string data_generate::res_dir = "res";
+bool data_generate::save_intermediate_result = true;
+
 MatrixXd data_generate::generate_random_points(const int point_num, const double range_min, const double range_max) {
 	std::default_random_engine gen;
 	std::uniform_real_distribution<double> dist(range_min, range_max);
@@ -45,32 +48,54 @@ MatrixXd data_generate::add_gaussian_noise(const MatrixXd& X, const double mu, c
 	return Y;
 }
 
-MatrixXd data_generate::read_from_file(const string & filename)
+bool data_generate::load(MatrixXd& X, const string &filename)
 {
-	std::ifstream f(filename);
+	try {
+		std::ifstream f(filename);
+		if (!f.is_open()) {
+			throw std::runtime_error("can not open file : " + filename);
+		}
+		cout << "Read : " << filename << endl;
+
+		vector<Vector2d> points;
+		while (!f.eof()) {
+			Vector2d p;
+			f >> p.x() >> p.y();
+			points.push_back(p);
+		}
+		f.close();
+		//cout << points.size() << endl;
+
+		X = MatrixXd(points.size(), 2);
+#pragma omp parallel for
+		for (int i = 0; i < points.size(); i++) {
+			X.row(i) = points[i];
+		}
+
+		return true;
+	}
+	catch (std::exception& e) {
+		cout << e.what() << endl;
+		return false;
+	}
+}
+
+void data_generate::save(const MatrixXd& X, const string& filename)
+{
+	std::ofstream f(filename);
 	if (!f.is_open()) {
 		throw std::runtime_error("can not open file : " + filename);
 	}
-	cout << "Opened : " << filename << endl;
+	cout << "Save : " << filename << endl;
 
-	vector<Vector2d> points;
-	while (!f.eof()) {
-		Vector2d p;
-		f >> p.x() >> p.y();
-		points.push_back(p);
+	for (int i = 0; i < X.rows(); i++) {
+		const Vector2d& p = X.row(i);
+		f << p.x() << " " << p.y();
+		if (i != X.rows() - 1) {
+			f << endl;
+		}
 	}
 	f.close();
-	//cout << points.size() << endl;
-
-	MatrixXd X(points.size(), 2);
-#pragma omp parallel for
-	for (int i = 0; i < points.size(); i++) {
-		X.row(i) = points[i];
-	}
-
-	//cout << X << endl;
-
-	return X;
 }
 
 void data_generate::add_outlier(MatrixXd& X, const double factor)
@@ -86,8 +111,8 @@ void data_generate::add_outlier(MatrixXd& X, const double factor)
 	double min_y = X.col(1).minCoeff();
 	double max_y = X.col(1).maxCoeff();
 
-	//std::random_device rd;
-	std::default_random_engine gen_x(0), gen_y(1);
+	std::random_device rd;
+	std::default_random_engine gen_x(rd()), gen_y(rd());
 	std::uniform_real_distribution<double> dist_x(min_x, max_x), dist_y(min_y, max_y);
 	auto random_x = bind(dist_x, gen_x), random_y = bind(dist_y, gen_y);
 

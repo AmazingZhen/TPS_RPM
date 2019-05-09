@@ -29,28 +29,62 @@ void delete_directory(string dir) {
 }
 
 int main() {
-	delete_directory("res/");
+	const string data_dir = "data/";
+	const string source_suffix = "_source.txt", target_suffix = "_target.txt";
+	const string outlier_suffix = "_outlier";
+	string file_name = "fish2";
 
-	cout << "Enter scale : ";
-	cin >> rpm::scale;
-	getchar();
-	
-	MatrixXd X = data_generate::read_from_file("data/fish2_source.txt");
-	MatrixXd Y = data_generate::read_from_file("data/fish2_target.txt");
+	cout << "Enter file_name : ";
+	cin >> file_name;
 
+	//cout << "Enter scale : ";
+	//cin >> rpm::scale;
+	//getchar();
+	rpm::scale = 500;
+
+	const bool need_generate_outlier = false;
+	const bool source_load_outlier = true, target_load_outlier = true;
+
+	MatrixXd X, Y;
+	if (source_load_outlier) {
+		if (!data_generate::load(X, data_dir + file_name + outlier_suffix + source_suffix)) {
+			data_generate::load(X, data_dir + file_name + source_suffix);
+			data_generate::add_outlier(X, 0.3);
+			data_generate::save(X, data_dir + file_name + outlier_suffix + source_suffix);
+		}
+	}
+	else {
+		data_generate::load(X, data_dir + file_name + source_suffix);
+	}
+
+	if (target_load_outlier) {
+		if (!data_generate::load(Y, data_dir + file_name + outlier_suffix + target_suffix)) {
+			data_generate::load(Y, data_dir + file_name + target_suffix);
+			data_generate::add_outlier(Y, 0.3);
+			data_generate::save(Y, data_dir + file_name + outlier_suffix + target_suffix);
+		}
+	}
+	else {
+		data_generate::load(Y, data_dir + file_name + target_suffix);
+	}
+
+	data_generate::res_dir = file_name;
+	fs::create_directory(data_generate::res_dir);
+	delete_directory(data_generate::res_dir);
+
+	char file_buf[256];
 	Mat origin_image = data_visualize::visualize(X, Y, rpm::scale);
-	imwrite("data_origin.png", origin_image);
-	data_generate::add_outlier(X, 0.3);
-	Mat origin_image_outlier = data_visualize::visualize(X, Y, rpm::scale);
-	imwrite("data_origin_outlier.png", origin_image_outlier);
+	sprintf_s(file_buf, "%s/data_origin.png", data_generate::res_dir.c_str());
+	imwrite(file_buf, origin_image);
 	getchar();
 
 	rpm::ThinPlateSplineParams params(X);
 	MatrixXd M;
-	rpm::estimate(X, Y, M, params);
-
-	Mat result_image = data_visualize::visualize(params.applyTransform(false), Y, rpm::scale);
-	imwrite("data_result.png", result_image);
+	if (rpm::estimate(X, Y, M, params)) {
+		Mat result_image = data_visualize::visualize(params.applyTransform(false), Y, rpm::scale);
+		sprintf_s(file_buf, "%s/data_result.png", data_generate::res_dir.c_str());
+		imwrite(file_buf, result_image);
+	}
 
 	getchar();
 	//getchar();

@@ -23,9 +23,13 @@ using std::endl;
 using std::string;
 
 namespace data_generate {
+	extern string res_dir;
+	extern bool save_intermediate_result;
+
 	MatrixXd generate_random_points(const int point_num, const double range_min, const double range_max);
 	MatrixXd add_gaussian_noise(const MatrixXd& X, const double mu, const double sigma);
-	MatrixXd read_from_file(const string& filename);
+	bool load(MatrixXd& X, const string &filename);
+	void save(const MatrixXd& X, const string& filename);
 	void add_outlier(MatrixXd& X, const double factor = 0.3);
 
 	// Normalize x and y range to [0, 1] then scale it.
@@ -33,5 +37,5 @@ namespace data_generate {
 }
 
 namespace data_visualize {
-	Mat visualize(const MatrixXd& X, const MatrixXd& Y, const double scale, const bool draw_line = true);
+	Mat visualize(const MatrixXd& X, const MatrixXd& Y, const double scale, const bool draw_line = false);
 }

@@ -23,7 +23,7 @@ double rpm::T_end = T_start * 1e-4;
 double rpm::r = 0.93, rpm::I0 = 5, rpm::epsilon0 = 1e-2;
 double rpm::alpha = 0.0; // 5 * 5
 // Softassign params
-double rpm::I1 = 10, rpm::epsilon1 = 1e-3;
+double rpm::I1 = 10, rpm::epsilon1 = 1e-4;
 // Thin-plate spline params
 double rpm::lambda_start = T_start;
 
@@ -46,8 +46,7 @@ namespace {
 
 	inline void _soft_assign(
 		MatrixXd& assignment_matrix,
-		const int max_iteration = 30,
-		const double epsilon = 1e-5)
+		const int max_iteration = 30)
 	{
 		int iter = 0;
 		while (iter++ < max_iteration){
@@ -55,7 +54,7 @@ namespace {
 #pragma omp parallel for
 			for (int r = 0; r < assignment_matrix.rows() - 1; r++) {
 				double row_sum = assignment_matrix.row(r).sum();
-				if (row_sum < epsilon) {
+				if (row_sum < epsilon1) {
 					continue;
 				}
 				assignment_matrix.row(r) /= row_sum;
@@ -65,7 +64,7 @@ namespace {
 #pragma omp parallel for
 			for (int c = 0; c < assignment_matrix.cols() - 1; c++) {
 				double col_sum = assignment_matrix.col(c).sum();
-				if (col_sum < epsilon) {
+				if (col_sum < epsilon1) {
 					continue;
 				}
 				assignment_matrix.col(c) /= col_sum;
@@ -114,7 +113,7 @@ void rpm::set_T_start(double T)
 {
 	T_start = T;
 	T_end = T * 1e-4;
-	lambda_start = T * 3;
+	lambda_start = T * 10;
 
 	cout << "Set T_start : " << T_start << endl;
 	//getchar();
@@ -158,16 +157,18 @@ bool rpm::estimate(
 		//double T_end = T_start * 1e-5;
 
 		double T_cur = T_start;
-		double lambda = lambda_start * K;
+		double lambda = lambda_start;
 
 		if (!init_params(X, Y, T_start, M, params)) {
 			throw std::runtime_error("init params failed!");
 		}
 
 		char file[256];
-		sprintf_s(file, "res/data_%.2f.png", T_cur);
-		Mat result_image = data_visualize::visualize(params.applyTransform(false), Y, scale);
-		imwrite(file, result_image);
+		if (data_generate::save_intermediate_result) {
+			sprintf_s(file, "%s/data_%.3f.png", data_generate::res_dir.c_str(), T_cur);
+			Mat result_image = data_visualize::visualize(params.applyTransform(false), Y, scale);
+			imwrite(file, result_image);
+		}
 
 		while (T_cur >= T_end) {
 
@@ -198,9 +199,11 @@ bool rpm::estimate(
 			T_cur *= r;
 			lambda *= r;
 
-			sprintf_s(file, "res/data_%.5f.png", T_cur);
-			Mat result_image = data_visualize::visualize(params.applyTransform(false), Y, scale);
-			imwrite(file, result_image);
+			if (data_generate::save_intermediate_result) {
+				sprintf_s(file, "%s/data_%.3f.png", data_generate::res_dir.c_str(), T_cur);
+				Mat result_image = data_visualize::visualize(params.applyTransform(false), Y, scale);
+				imwrite(file, result_image);
+			}
 		}
 
 		// Re-estimate real ThinPlateSplineParams on unnormalized data.
@@ -314,8 +317,8 @@ bool rpm::estimate_correspondence(
 //		M(K, n) = beta_start * std::exp(beta_start * -dist);
 //	}
 
-	M.row(K).setConstant(1.0 / N * 0.01);
-	M.col(N).setConstant(1.0 / K * 0.01);
+	M.row(K).setConstant(1.0 / (N + 1));
+	M.col(N).setConstant(1.0 / (K + 1));
 	
 	_soft_assign(M);
 
@@ -361,10 +364,10 @@ bool rpm::estimate_transform(
 #ifdef RPM_USE_BOTHSIDE_OUTLIER_REJECTION
 		MatrixXd W = MatrixXd::Zero(K, K);
 		for (int k = 0; k < K; k++) {
-			W(k, k) = 1.0 / std::max(M.row(k).sum(), 1e-5);
+			W(k, k) = 1.0 / std::max(M.row(k).sum(), epsilon1);
 		}
 
-		MatrixXd T = phi + lambda * W;
+		MatrixXd T = phi + N * lambda * W;
 
 		LDLT<MatrixXd> solver;
 		MatrixXd L_mat = Q2.transpose() * T * Q2;
@@ -384,7 +387,7 @@ bool rpm::estimate_transform(
 
 
 #ifdef RPM_REGULARIZE_AFFINE_PARAM  // Add regular term lambdaI * d = lambdaI * I
-		double lambda_d = lambda * 0.01;
+		double lambda_d = N * lambda * 0.01;
 
 		L_mat = MatrixXd(R.rows() * 2, R.cols());
 		L_mat << R,
@@ -412,24 +415,24 @@ bool rpm::estimate_transform(
 		}
 #else
 		LDLT<MatrixXd> solver;
-		MatrixXd L_mat = (Q2.transpose() * phi * Q2 + (MatrixXd::Identity(K - dim, K - dim) * lambda));
+		MatrixXd L_mat = (Q2.transpose() * phi * Q2 + (MatrixXd::Identity(K - dim, K - dim) * K * lambda));
 
 		solver.compute(L_mat.transpose() * L_mat);
 		if (solver.info() != Eigen::Success) {
-			throw std::runtime_error("ldlt decomposition failed!");
+			throw std::runtime_error("Param w ldlt decomposition failed!");
 		}
 
 		MatrixXd b_mat = Q2.transpose() * Y;
 		MatrixXd gamma = solver.solve(L_mat.transpose() * b_mat);
 		if (solver.info() != Eigen::Success) {
-			throw std::runtime_error("ldlt solve failed!");
+			throw std::runtime_error("Param w ldlt solve failed!");
 		}
 
 		params.w = Q2 * gamma;
 
 
 #ifdef RPM_REGULARIZE_AFFINE_PARAM  // Add regular term lambdaI * d = lambdaI * I
-		double lambda_d = lambda * 0.01;
+		double lambda_d = K * lambda * 0.01;
 
 		L_mat = MatrixXd(R.rows() * 2, R.cols());
 		L_mat << R,
@@ -440,7 +443,7 @@ bool rpm::estimate_transform(
 
 		solver.compute(L_mat.transpose() * L_mat);
 		if (solver.info() != Eigen::Success) {
-			throw std::runtime_error("ldlt decomposition failed!");
+			throw std::runtime_error("Param d ldlt decomposition failed!");
 		}
 
 #ifdef RPM_REGULARIZE_AFFINE_PARAM
@@ -453,7 +456,7 @@ bool rpm::estimate_transform(
 
 		params.d = solver.solve(L_mat.transpose() * b_mat);
 		if (solver.info() != Eigen::Success) {
-			throw std::runtime_error("ldlt solve failed!");
+			throw std::runtime_error("Param d ldlt solve failed!");
 		}
 
 		// Another form of regularize d.
@@ -488,9 +491,11 @@ MatrixXd rpm::apply_correspondence(const MatrixXd& Y_, const MatrixXd& M)
 	Y.rightCols(1).setConstant(1);
 	
 	MatrixXd MY = M * Y;
+#ifdef RPM_USE_BOTHSIDE_OUTLIER_REJECTION
 	for (int k = 0; k < M.rows(); k++) {
-		MY.row(k) /= std::max(M.row(k).sum(), 1e-5);
+		MY.row(k) /= std::max(M.row(k).sum(), epsilon1);
 	}
+#endif // RPM_USE_BOTHSIDE_OUTLIER_REJECTION
 
 	return MY;
 }
@@ -530,6 +535,16 @@ rpm::ThinPlateSplineParams::ThinPlateSplineParams(const MatrixXd & X)
 	d = MatrixXd::Identity(rpm::D + 1, rpm::D + 1);
 }
 
+rpm::ThinPlateSplineParams::ThinPlateSplineParams(const ThinPlateSplineParams& other)
+{
+	d = other.d;
+	w = other.w;
+	X = other.X;
+	phi = other.phi;
+	Q = other.Q;
+	R = other.R;
+}
+
 MatrixXd rpm::ThinPlateSplineParams::applyTransform(bool homo) const
 {
 	MatrixXd XT_ = X * d + phi * w;
@@ -538,7 +553,6 @@ MatrixXd rpm::ThinPlateSplineParams::applyTransform(bool homo) const
 	}
 
 	MatrixXd XT(XT_.rows(), XT_.cols() - 1);
-
 	for (int k = 0; k < XT_.rows(); k++) {
 		XT.row(k) = XT_.row(k).hnormalized();
 	}

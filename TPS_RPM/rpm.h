@@ -36,6 +36,7 @@ namespace rpm {
 	class ThinPlateSplineParams {
 	public:
 		ThinPlateSplineParams(const MatrixXd &X);
+		ThinPlateSplineParams(const ThinPlateSplineParams& other);
 
 		// (D + 1) * (D + 1) matrix representing the affine transformation.
 		MatrixXd d;
