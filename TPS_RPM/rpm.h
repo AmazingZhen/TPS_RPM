@@ -14,7 +14,7 @@
 using namespace Eigen;
 using namespace std;
 
-//#define RPM_USE_BOTHSIDE_OUTLIER_REJECTION
+#define RPM_USE_BOTHSIDE_OUTLIER_REJECTION
 #define RPM_REGULARIZE_AFFINE_PARAM
 
 namespace rpm {
@@ -43,7 +43,7 @@ namespace rpm {
 		// K * (D + 1) matrix representing the non-affine deformation.
 		MatrixXd w;
 
-		MatrixXd applyTransform(bool homo) const;
+		MatrixXd applyTransform() const;
 		VectorXd applyTransform(int x_i) const;
 
 		MatrixXd get_phi() { return phi; };

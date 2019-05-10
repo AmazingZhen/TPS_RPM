@@ -22,6 +22,18 @@ using std::cout;
 using std::endl;
 using std::string;
 
+namespace data_process {
+	void sample(MatrixXd& X, int sample_num);
+
+	// (x,y) -> (x,y,1)
+	void homo(MatrixXd& X);
+	// (x,y,w) -> (x/w, y/w)
+	void hnorm(MatrixXd& X);
+
+	// Normalize X and Y to range [0, 1].
+	void preprocess(MatrixXd& X, MatrixXd& Y);
+}
+
 namespace data_generate {
 	extern string res_dir;
 	extern bool save_intermediate_result;
@@ -31,9 +43,6 @@ namespace data_generate {
 	bool load(MatrixXd& X, const string &filename);
 	void save(const MatrixXd& X, const string& filename);
 	void add_outlier(MatrixXd& X, const double factor = 0.3);
-
-	// Normalize x and y range to [0, 1] then scale it.
-	bool preprocess(MatrixXd& X, MatrixXd& Y);
 }
 
 namespace data_visualize {

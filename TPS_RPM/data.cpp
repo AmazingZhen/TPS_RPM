@@ -131,55 +131,20 @@ void data_generate::add_outlier(MatrixXd& X, const double factor)
 	X = X_;
 }
 
-bool data_generate::preprocess(MatrixXd& X, MatrixXd& Y)
-{
-	double min_x = std::min(X.col(0).minCoeff(), Y.col(0).minCoeff());
-	double max_x = std::max(X.col(0).maxCoeff(), Y.col(0).maxCoeff());
-	double min_y = std::min(X.col(1).minCoeff(), Y.col(1).minCoeff());
-	double max_y = std::max(X.col(1).maxCoeff(), Y.col(1).maxCoeff());
-
-	cout << "min_x" << min_x << endl;
-	cout << "max_x" << max_x << endl;
-	cout << "min_y" << min_y << endl;
-	cout << "max_y" << max_y << endl;
-
-	double max_len = max((max_x - min_x), (max_y - min_y));
-
-	cout << "max_len" << max_len << endl;
-
-	auto normalize_mat = [](MatrixXd& m, double min_x, double min_y, double max_len) {
-		MatrixXd t = m;
-		t.col(0).setConstant(min_x);
-		t.col(1).setConstant(min_y);
-
-		m -= t;
-		m /= max_len;
-	};
-
-	normalize_mat(X, min_x, min_y, max_len);
-	normalize_mat(Y, min_x, min_y, max_len);
-
-	min_x = std::min(X.col(0).minCoeff(), Y.col(0).minCoeff());
-	max_x = std::max(X.col(0).maxCoeff(), Y.col(0).maxCoeff());
-	min_y = std::min(X.col(1).minCoeff(), Y.col(1).minCoeff());
-	max_y = std::max(X.col(1).maxCoeff(), Y.col(1).maxCoeff());
-
-	cout << "min_x" << min_x << endl;
-	cout << "max_x" << max_x << endl;
-	cout << "min_y" << min_y << endl;
-	cout << "max_y" << max_y << endl;
-
-	return true;
-}
-
 Mat data_visualize::visualize(const MatrixXd& X_, const MatrixXd& Y_, const double scale, const bool draw_line)
 {
-	if (X_.cols() != Y_.cols() || X_.cols() != rpm::D) {
+	if (X_.cols() != rpm::D && X_.cols() != rpm::D + 1 && Y_.cols() != rpm::D && Y_.cols() != rpm::D + 1) {
 		throw std::invalid_argument("Only support 2d points now!");
 	}
 
-	MatrixXd X = X_ * scale;
-	MatrixXd Y = Y_ * scale;
+	MatrixXd X = X_;
+	MatrixXd Y = Y_;
+
+	data_process::hnorm(X);
+	data_process::hnorm(Y);
+
+	X *= scale;
+	Y *= scale;
 
 	const double min_x = std::min(X.col(0).minCoeff(), Y.col(0).minCoeff());
 	const double max_x = std::max(X.col(0).maxCoeff(), Y.col(0).maxCoeff());
@@ -233,4 +198,74 @@ Mat data_visualize::visualize(const MatrixXd& X_, const MatrixXd& Y_, const doub
 	}
 
 	return img;
+}
+
+void data_process::sample(MatrixXd &X, int sample_num)
+{
+	if (X.rows() < sample_num) {
+		return;
+	}
+
+	int interval = ceil(X.rows() / (double)sample_num);
+	MatrixXd X_(sample_num, X.cols());
+
+	int count = 0;
+	for (int x_i = 0; x_i < X.rows(); x_i += interval) {
+		X_.row(count) = X.row(x_i);
+		count++;
+	}
+	X_.conservativeResize(count, X_.cols());
+	X = X_;
+}
+
+void data_process::homo(MatrixXd & X)
+{
+	if (X.cols() != rpm::D && X.cols() != rpm::D + 1) {
+		throw invalid_argument("Can not convert 2d points to 3d homogeneous points.");
+	}
+
+	if (X.cols() == rpm::D + 1) {
+		return;
+	}
+
+	X.conservativeResize(X.rows(), rpm::D + 1);
+	X.col(rpm::D).setConstant(1);
+}
+
+void data_process::hnorm(MatrixXd & X)
+{
+	if (X.cols() != rpm::D && X.cols() != rpm::D + 1) {
+		throw invalid_argument("Can not convert 2d points to 3d homogeneous points.");
+	}
+
+	if (X.cols() == rpm::D) {
+		return;
+	}
+
+	MatrixXd X_ = X.rowwise().hnormalized();
+	X = X_;
+}
+
+void data_process::preprocess(MatrixXd & X, MatrixXd & Y)
+{
+	double min_x = std::min(X.col(0).minCoeff(), Y.col(0).minCoeff());
+	double max_x = std::max(X.col(0).maxCoeff(), Y.col(0).maxCoeff());
+	double min_y = std::min(X.col(1).minCoeff(), Y.col(1).minCoeff());
+	double max_y = std::max(X.col(1).maxCoeff(), Y.col(1).maxCoeff());
+
+	double max_len = max((max_x - min_x), (max_y - min_y));
+
+	auto normalize_mat = [](MatrixXd& m, double min_x, double min_y, double max_len) {
+		MatrixXd t = m;
+		t.col(0).setConstant(min_x);
+		t.col(1).setConstant(min_y);
+
+		m -= t;
+		m /= max_len;
+	};
+
+	normalize_mat(X, min_x, min_y, max_len);
+	normalize_mat(Y, min_x, min_y, max_len);
+
+	return;
 }

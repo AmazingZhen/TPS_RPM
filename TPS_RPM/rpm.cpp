@@ -45,11 +45,10 @@ namespace {
 	}
 
 	inline void _soft_assign(
-		MatrixXd& assignment_matrix,
-		const int max_iteration = 30)
+		MatrixXd& assignment_matrix)
 	{
 		int iter = 0;
-		while (iter++ < max_iteration){
+		while (iter++ < I1) {
 			// normalizing across all rows
 #pragma omp parallel for
 			for (int r = 0; r < assignment_matrix.rows() - 1; r++) {
@@ -83,37 +82,13 @@ namespace {
 		MatrixXd diff = (Y - XT).cwiseAbs();
 		return diff.maxCoeff();
 	}
-
-	// Normalize X and Y to range [0, 1].
-	inline void _preprocess(MatrixXd& X, MatrixXd& Y) {
-		double min_x = std::min(X.col(0).minCoeff(), Y.col(0).minCoeff());
-		double max_x = std::max(X.col(0).maxCoeff(), Y.col(0).maxCoeff());
-		double min_y = std::min(X.col(1).minCoeff(), Y.col(1).minCoeff());
-		double max_y = std::max(X.col(1).maxCoeff(), Y.col(1).maxCoeff());
-
-		double max_len = max((max_x - min_x), (max_y - min_y));
-
-		auto normalize_mat = [](MatrixXd& m, double min_x, double min_y, double max_len) {
-			MatrixXd t = m;
-			t.col(0).setConstant(min_x);
-			t.col(1).setConstant(min_y);
-
-			m -= t;
-			m /= max_len;
-		};
-
-		normalize_mat(X, min_x, min_y, max_len);
-		normalize_mat(Y, min_x, min_y, max_len);
-
-		return;
-	}
 }
 
 void rpm::set_T_start(double T)
 {
 	T_start = T;
 	T_end = T * 1e-4;
-	lambda_start = T * 10;
+	lambda_start = T;
 
 	cout << "Set T_start : " << T_start << endl;
 	//getchar();
@@ -133,7 +108,10 @@ bool rpm::estimate(
 		}
 
 		MatrixXd X = X_, Y = Y_;
-		_preprocess(X, Y);
+
+		data_process::preprocess(X, Y);
+		data_process::homo(X);
+		data_process::homo(Y);
 
 		params = ThinPlateSplineParams(X);
 
@@ -153,8 +131,7 @@ bool rpm::estimate(
 		cout << "max_dist : " << max_dist << endl;
 		cout << "average_dist : " << average_dist << endl;
 		set_T_start(max_dist);
-
-		//double T_end = T_start * 1e-5;
+		//rpm::alpha = average_dist * 0.1;
 
 		double T_cur = T_start;
 		double lambda = lambda_start;
@@ -165,8 +142,8 @@ bool rpm::estimate(
 
 		char file[256];
 		if (data_generate::save_intermediate_result) {
-			sprintf_s(file, "%s/data_%.3f.png", data_generate::res_dir.c_str(), T_cur);
-			Mat result_image = data_visualize::visualize(params.applyTransform(false), Y, scale);
+			sprintf_s(file, "%s/data_%.6f.png", data_generate::res_dir.c_str(), T_cur);
+			Mat result_image = data_visualize::visualize(params.applyTransform(), Y, scale);
 			imwrite(file, result_image);
 		}
 
@@ -196,14 +173,14 @@ bool rpm::estimate(
 				//}
 			}
 
-			T_cur *= r;
-			lambda *= r;
-
 			if (data_generate::save_intermediate_result) {
-				sprintf_s(file, "%s/data_%.3f.png", data_generate::res_dir.c_str(), T_cur);
-				Mat result_image = data_visualize::visualize(params.applyTransform(false), Y, scale);
+				sprintf_s(file, "%s/data_%.6f.png", data_generate::res_dir.c_str(), T_cur);
+				Mat result_image = data_visualize::visualize(params.applyTransform(), Y, scale);
 				imwrite(file, result_image);
 			}
+
+			T_cur *= r;
+			lambda *= r;
 		}
 
 		// Re-estimate real ThinPlateSplineParams on unnormalized data.
@@ -218,8 +195,8 @@ bool rpm::estimate(
 		//}
 		//M = M_binary;
 
-		params = ThinPlateSplineParams(X_);
-		estimate_transform(X_, Y_, M, lambda, params);
+		//params = ThinPlateSplineParams(X_);
+	//	estimate_transform(X_, Y_, M, lambda, params);
 	}
 	catch (const std::exception& e){
 		std::cout << e.what();
@@ -280,39 +257,45 @@ bool rpm::estimate_correspondence(
 	const double T0,
 	MatrixXd& M)
 {
+	if (X.cols() != D + 1 || Y.cols() != D + 1) {
+		throw std::invalid_argument("Current only support 3d homogeneou points!");
+	}
+
 	const int K = X.rows(), N = Y.rows();
 	const double beta = 1.0 / T;
 
 	M = MatrixXd::Zero(K + 1, N + 1);
 
-	MatrixXd XT = params.applyTransform(false);
+	MatrixXd XT = params.applyTransform();
 
 #pragma omp parallel for
 	for (int k = 0; k < K; k++) {
-		const Vector2d& x = XT.row(k);
+		const Vector3d& x = XT.row(k);
 		for (int n = 0; n < N; n++) {
-			const Vector2d& y = Y.row(n);
+			const Vector3d& y = Y.row(n);
 
 			//assignment_matrix(p_i, v_i) = -((p[p_i] - v[v_i]).squaredNorm() - alpha);
 			double dist = ((y - x).squaredNorm());
 
 			//assignment_matrix(p_i, v_i) = dist < alpha ? std::exp(-(1.0 / T) * dist) : 0;
-			M(k, n) = beta * std::exp(beta *  -dist);
+			M(k, n) = beta * std::exp(beta * -(dist - alpha));
 		}
 	};
 
-//	Vector2d center_x(XT.col(0).mean(), XT.col(1).mean()), center_y(Y.col(0).mean(), Y.col(1).mean());
+	Vector3d center_x(XT.col(0).mean(), XT.col(1).mean(), XT.col(2).mean());
+	Vector3d center_y(Y.col(0).mean(), Y.col(1).mean(), Y.col(2).mean());
+
 //	const double beta_start = 1.0 / T0;
 //#pragma omp parallel for
 //	for (int k = 0; k < K; k++) {
-//		const Vector2d& x = XT.row(k);
+//		const Vector3d& x = XT.row(k);
 //		double dist = ((center_y - x).squaredNorm());
 //		M(k, N) = beta_start * std::exp(beta_start * -dist);
 //	}
 //
 //#pragma omp parallel for
 //	for (int n = 0; n < N; n++) {
-//		const Vector2d& y = Y.row(n);
+//		const Vector3d& y = Y.row(n);
 //		double dist = ((y - center_x).squaredNorm());
 //		M(K, n) = beta_start * std::exp(beta_start * -dist);
 //	}
@@ -328,31 +311,26 @@ bool rpm::estimate_correspondence(
 }
 
 bool rpm::estimate_transform(
-	const MatrixXd& X_,
+	const MatrixXd& X,
 	const MatrixXd& Y_,
-	const MatrixXd& M_,
+	const MatrixXd& M,
 	const double lambda,
 	ThinPlateSplineParams& params)
 {
 	//auto t1 = std::chrono::high_resolution_clock::now();
 
 	try {
-		if (X_.cols() != D || Y_.cols() != D) {
-			throw std::invalid_argument("Current only support 2d point set !");
+		if (X.cols() != D + 1 || Y_.cols() != D + 1) {
+			throw std::invalid_argument("Current only support 3d homogeneou points!");
 		}
 
-		const int K = X_.rows(), N = Y_.rows();
-		if (M_.rows() != K || M_.cols() != N) {
+		const int K = X.rows(), N = Y_.rows();
+		if (M.rows() != K || M.cols() != N) {
 			throw std::invalid_argument("Matrix M size not same as X and Y!");
 		}
 
-		MatrixXd M = M_.block(0, 0, K, N);
-
 		int dim = D + 1;
-		MatrixXd X(K, dim), Y = apply_correspondence(Y_, M);
-		for (int k = 0; k < K; k++) {
-			X.row(k) = X_.row(k).homogeneous();
-		}
+		MatrixXd Y = apply_correspondence(Y_, M);
 		
 		const MatrixXd& phi = params.get_phi();
 		const MatrixXd& Q = params.get_Q();
@@ -480,15 +458,11 @@ bool rpm::estimate_transform(
 	return true;
 }
 
-MatrixXd rpm::apply_correspondence(const MatrixXd& Y_, const MatrixXd& M)
+MatrixXd rpm::apply_correspondence(const MatrixXd& Y, const MatrixXd& M)
 {
-	if (Y_.cols() != rpm::D) {
-		throw std::invalid_argument("input must be 2d!");
+	if (Y.cols() != rpm::D + 1) {
+		throw std::invalid_argument("input must be 3d homogeneou points!");
 	}
-
-	MatrixXd Y(Y_.rows(), rpm::D + 1);
-	Y.leftCols(rpm::D) = Y_;
-	Y.rightCols(1).setConstant(1);
 	
 	MatrixXd MY = M * Y;
 #ifdef RPM_USE_BOTHSIDE_OUTLIER_REJECTION
@@ -500,8 +474,11 @@ MatrixXd rpm::apply_correspondence(const MatrixXd& Y_, const MatrixXd& M)
 	return MY;
 }
 
-rpm::ThinPlateSplineParams::ThinPlateSplineParams(const MatrixXd & X)
+rpm::ThinPlateSplineParams::ThinPlateSplineParams(const MatrixXd &X_)
 {
+	X = X_;
+	data_process::homo(X);
+
 	const int K = X.rows();
 
 	phi = MatrixXd::Zero(K, K);  // phi(a, b) = || Xb - Xa || ^ 2 * log(|| Xb - Xa ||);
@@ -520,13 +497,8 @@ rpm::ThinPlateSplineParams::ThinPlateSplineParams(const MatrixXd & X)
 		}
 	}
 
-	this->X = MatrixXd(K, D + 1);
-	for (int k = 0; k < K; k++) {
-		this->X.row(k) = X.row(k).homogeneous();
-	}
-
 	HouseholderQR<MatrixXd> qr;
-	qr.compute(this->X);
+	qr.compute(X);
 
 	Q = qr.householderQ();
 	R = qr.matrixQR().triangularView<Upper>();
@@ -545,17 +517,10 @@ rpm::ThinPlateSplineParams::ThinPlateSplineParams(const ThinPlateSplineParams& o
 	R = other.R;
 }
 
-MatrixXd rpm::ThinPlateSplineParams::applyTransform(bool homo) const
+MatrixXd rpm::ThinPlateSplineParams::applyTransform() const
 {
-	MatrixXd XT_ = X * d + phi * w;
-	if (homo) {
-		return XT_;
-	}
+	MatrixXd XT = X * d + phi * w;
 
-	MatrixXd XT(XT_.rows(), XT_.cols() - 1);
-	for (int k = 0; k < XT_.rows(); k++) {
-		XT.row(k) = XT_.row(k).hnormalized();
-	}
 	return XT;
 }
 

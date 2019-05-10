@@ -37,13 +37,15 @@ int main() {
 	cout << "Enter file_name : ";
 	cin >> file_name;
 
-	//cout << "Enter scale : ";
-	//cin >> rpm::scale;
-	//getchar();
 	rpm::scale = 500;
+	cout << "Enter scale : ";
+	cin >> rpm::scale;
+	//getchar();
+
+	int sample_num = 200;
 
 	const bool need_generate_outlier = false;
-	const bool source_load_outlier = true, target_load_outlier = true;
+	const bool source_load_outlier = false, target_load_outlier = false;
 
 	MatrixXd X, Y;
 	if (source_load_outlier) {
@@ -68,6 +70,13 @@ int main() {
 		data_generate::load(Y, data_dir + file_name + target_suffix);
 	}
 
+
+	//data_process::sample(X, sample_num);
+	//data_process::sample(Y, sample_num);
+	cout << "Num of X : " << X.rows() << endl;
+	cout << "Num of Y : " << Y.rows() << endl;
+	data_process::preprocess(X, Y);
+
 	data_generate::res_dir = file_name;
 	fs::create_directory(data_generate::res_dir);
 	delete_directory(data_generate::res_dir);
@@ -81,9 +90,9 @@ int main() {
 	rpm::ThinPlateSplineParams params(X);
 	MatrixXd M;
 	if (rpm::estimate(X, Y, M, params)) {
-		Mat result_image = data_visualize::visualize(params.applyTransform(false), Y, rpm::scale);
-		sprintf_s(file_buf, "%s/data_result.png", data_generate::res_dir.c_str());
-		imwrite(file_buf, result_image);
+		//Mat result_image = data_visualize::visualize(params.applyTransform(false), Y, 1);
+		//sprintf_s(file_buf, "%s/data_result.png", data_generate::res_dir.c_str());
+		//imwrite(file_buf, result_image);
 	}
 
 	getchar();
