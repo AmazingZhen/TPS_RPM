@@ -20,9 +20,9 @@ using namespace rpm;
 // Annealing params
 double rpm::T_start = 1;
 double rpm::T_end = T_start * 1e-4;
-double rpm::r = 0.93, rpm::I0 = 5, rpm::epsilon0 = 1e-2;
-double rpm::alpha = 0.0; // 5 * 5
-// Softassign params
+double rpm::r = 0.90, rpm::I0 = 5, rpm::epsilon0 = 1e-2;
+double rpm::alpha = 0.1; // 5 * 5
+						 // Softassign params
 double rpm::I1 = 10, rpm::epsilon1 = 1e-4;
 // Thin-plate spline params
 double rpm::lambda_start = T_start;
@@ -84,10 +84,12 @@ namespace {
 	}
 }
 
-void rpm::set_T_start(double T)
+void rpm::set_T_start(double T, double scale)
 {
+	T *= scale;
+
 	T_start = T;
-	T_end = T * 1e-4;
+	T_end = T * 1e-3;
 	lambda_start = T;
 
 	cout << "Set T_start : " << T_start << endl;
@@ -98,7 +100,8 @@ bool rpm::estimate(
 	const MatrixXd& X_,
 	const MatrixXd& Y_,
 	MatrixXd& M,
-	ThinPlateSplineParams& params)
+	ThinPlateSplineParams& params,
+	const vector<pair<int, int> >& matched_point_indices)
 {
 	auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -130,7 +133,7 @@ bool rpm::estimate(
 		average_dist /= (K * N);
 		cout << "max_dist : " << max_dist << endl;
 		cout << "average_dist : " << average_dist << endl;
-		set_T_start(max_dist);
+		set_T_start(average_dist, 1);
 		//rpm::alpha = average_dist * 0.1;
 
 		double T_cur = T_start;
@@ -140,12 +143,12 @@ bool rpm::estimate(
 			throw std::runtime_error("init params failed!");
 		}
 
-		char file[256];
-		if (data_generate::save_intermediate_result) {
-			sprintf_s(file, "%s/data_%.6f.png", data_generate::res_dir.c_str(), T_cur);
-			Mat result_image = data_visualize::visualize(params.applyTransform(), Y, scale);
-			imwrite(file, result_image);
-		}
+		//char file[256];
+		//if (data_visualize::save_intermediate_result) {
+		//	sprintf_s(file, "%s/data_%.8f.png", data_visualize::res_dir.c_str(), T_cur);
+		//	Mat result_image = data_visualize::visualize(params.applyTransform(), Y);
+		//	imwrite(file, result_image);
+		//}
 
 		while (T_cur >= T_end) {
 
@@ -158,7 +161,7 @@ bool rpm::estimate(
 				//printf("	Annealing iter : %d\n", iter);
 				MatrixXd M_prev = M;
 				ThinPlateSplineParams params_prev = params;
-				if (!estimate_correspondence(X, Y, params, T_cur, T_start, M)) {
+				if (!estimate_correspondence(X, Y, matched_point_indices, params, T_cur, T_start, M)) {
 					throw std::runtime_error("estimate correspondence failed!");
 				}
 
@@ -173,11 +176,11 @@ bool rpm::estimate(
 				//}
 			}
 
-			if (data_generate::save_intermediate_result) {
-				sprintf_s(file, "%s/data_%.6f.png", data_generate::res_dir.c_str(), T_cur);
-				Mat result_image = data_visualize::visualize(params.applyTransform(), Y, scale);
-				imwrite(file, result_image);
-			}
+			//if (data_visualize::save_intermediate_result) {
+			//	sprintf_s(file, "%s/data_%.8f.png", data_visualize::res_dir.c_str(), T_cur);
+			//	Mat result_image = data_visualize::visualize(params.applyTransform(), Y, scale);
+			//	imwrite(file, result_image);
+			//}
 
 			T_cur *= r;
 			lambda *= r;
@@ -196,9 +199,9 @@ bool rpm::estimate(
 		//M = M_binary;
 
 		//params = ThinPlateSplineParams(X_);
-	//	estimate_transform(X_, Y_, M, lambda, params);
+		//	estimate_transform(X_, Y_, M, lambda, params);
 	}
-	catch (const std::exception& e){
+	catch (const std::exception& e) {
 		std::cout << e.what();
 		return false;
 	}
@@ -226,23 +229,23 @@ bool rpm::init_params(
 
 	//M = Eigen::MatrixXd::Identity(K + 1, N + 1);
 
-//	const double beta = 1.0 / T;
-//	M = Eigen::MatrixXd::Zero(K + 1, N + 1);
-//#pragma omp parallel for
-//	for (int k = 0; k < K; k++) {
-//		const VectorXd& x = X.row(k);
-//		for (int n = 0; n < N; n++) {
-//			const VectorXd& y = Y.row(n);
-//
-//			//assignment_matrix(p_i, v_i) = -((p[p_i] - v[v_i]).squaredNorm() - alpha);
-//			double dist = ((y - x).squaredNorm());
-//
-//			//assignment_matrix(p_i, v_i) = dist < alpha ? std::exp(-(1.0 / T) * dist) : 0;
-//			M(k, n) = std::exp(beta * -dist);
-//		}
-//	};
-//
-//	_soft_assign(M);
+	//	const double beta = 1.0 / T;
+	//	M = Eigen::MatrixXd::Zero(K + 1, N + 1);
+	//#pragma omp parallel for
+	//	for (int k = 0; k < K; k++) {
+	//		const VectorXd& x = X.row(k);
+	//		for (int n = 0; n < N; n++) {
+	//			const VectorXd& y = Y.row(n);
+	//
+	//			//assignment_matrix(p_i, v_i) = -((p[p_i] - v[v_i]).squaredNorm() - alpha);
+	//			double dist = ((y - x).squaredNorm());
+	//
+	//			//assignment_matrix(p_i, v_i) = dist < alpha ? std::exp(-(1.0 / T) * dist) : 0;
+	//			M(k, n) = std::exp(beta * -dist);
+	//		}
+	//	};
+	//
+	//	_soft_assign(M);
 	//cout << "M" << endl;
 	//cout << M << endl;
 
@@ -252,6 +255,7 @@ bool rpm::init_params(
 bool rpm::estimate_correspondence(
 	const MatrixXd& X,
 	const MatrixXd& Y,
+	const vector<pair<int, int> >& matched_point_indices,
 	const ThinPlateSplineParams& params,
 	const double T,
 	const double T0,
@@ -278,31 +282,42 @@ bool rpm::estimate_correspondence(
 			double dist = ((y - x).squaredNorm());
 
 			//assignment_matrix(p_i, v_i) = dist < alpha ? std::exp(-(1.0 / T) * dist) : 0;
-			M(k, n) = beta * std::exp(beta * -(dist - alpha));
+			M(k, n) = std::exp(beta * (alpha - dist));
 		}
 	};
 
-	Vector3d center_x(XT.col(0).mean(), XT.col(1).mean(), XT.col(2).mean());
-	Vector3d center_y(Y.col(0).mean(), Y.col(1).mean(), Y.col(2).mean());
+	for (auto point_pair : matched_point_indices) {
+		int k = point_pair.first, n = point_pair.second;
+		if (k < 0 || k >= K || n < 0 || n >= N) {
+			continue;
+		}
 
-//	const double beta_start = 1.0 / T0;
-//#pragma omp parallel for
-//	for (int k = 0; k < K; k++) {
-//		const Vector3d& x = XT.row(k);
-//		double dist = ((center_y - x).squaredNorm());
-//		M(k, N) = beta_start * std::exp(beta_start * -dist);
-//	}
-//
-//#pragma omp parallel for
-//	for (int n = 0; n < N; n++) {
-//		const Vector3d& y = Y.row(n);
-//		double dist = ((y - center_x).squaredNorm());
-//		M(K, n) = beta_start * std::exp(beta_start * -dist);
-//	}
+		M.row(k).setZero();
+		M.col(n).setZero();
+		M(k, n) = 1;
+	}
+
+	//Vector3d center_x(XT.col(0).mean(), XT.col(1).mean(), XT.col(2).mean());
+	//Vector3d center_y(Y.col(0).mean(), Y.col(1).mean(), Y.col(2).mean());
+
+	//	const double beta_start = 1.0 / T0;
+	//#pragma omp parallel for
+	//	for (int k = 0; k < K; k++) {
+	//		const Vector3d& x = XT.row(k);
+	//		double dist = ((center_y - x).squaredNorm());
+	//		M(k, N) = beta_start * std::exp(beta_start * -dist);
+	//	}
+	//
+	//#pragma omp parallel for
+	//	for (int n = 0; n < N; n++) {
+	//		const Vector3d& y = Y.row(n);
+	//		double dist = ((y - center_x).squaredNorm());
+	//		M(K, n) = beta_start * std::exp(beta_start * -dist);
+	//	}
 
 	M.row(K).setConstant(1.0 / (N + 1));
 	M.col(N).setConstant(1.0 / (K + 1));
-	
+
 	_soft_assign(M);
 
 	M.conservativeResize(K, N);
@@ -331,7 +346,7 @@ bool rpm::estimate_transform(
 
 		int dim = D + 1;
 		MatrixXd Y = apply_correspondence(Y_, M);
-		
+
 		const MatrixXd& phi = params.get_phi();
 		const MatrixXd& Q = params.get_Q();
 		const MatrixXd& R_ = params.get_R();
@@ -463,7 +478,7 @@ MatrixXd rpm::apply_correspondence(const MatrixXd& Y, const MatrixXd& M)
 	if (Y.cols() != rpm::D + 1) {
 		throw std::invalid_argument("input must be 3d homogeneou points!");
 	}
-	
+
 	MatrixXd MY = M * Y;
 #ifdef RPM_USE_BOTHSIDE_OUTLIER_REJECTION
 	for (int k = 0; k < M.rows(); k++) {
@@ -517,16 +532,63 @@ rpm::ThinPlateSplineParams::ThinPlateSplineParams(const ThinPlateSplineParams& o
 	R = other.R;
 }
 
-MatrixXd rpm::ThinPlateSplineParams::applyTransform() const
+MatrixXd rpm::ThinPlateSplineParams::applyTransform(bool hnormalize) const
 {
 	MatrixXd XT = X * d + phi * w;
+
+	if (hnormalize) {
+		data_process::hnorm(XT);
+	}
 
 	return XT;
 }
 
-VectorXd rpm::ThinPlateSplineParams::applyTransform(int x_i) const
+MatrixXd rpm::ThinPlateSplineParams::applyTransform(const MatrixXd& P_, bool hnormalize) const
 {
-	VectorXd xt = X.row(x_i) * d + phi.row(x_i) * w;
+	MatrixXd P = P_;
+	data_process::homo(P);
 
-	return xt.hnormalized();
+	const int N = P.rows();
+	const int K = X.rows();
+
+	MatrixXd phi_px = MatrixXd::Zero(N, K);  // phi(a, b) = || Xb - Xa || ^ 2 * log(|| Xb - Xa ||);
+#pragma omp parallel for
+	for (int p_i = 0; p_i < N; p_i++) {
+		const Vector3d& p = P.row(p_i);
+
+		for (int x_i = 0; x_i < K; x_i++) {
+			const Vector3d& x = X.row(x_i);
+
+			double dist = (p - x).norm();
+			if (dist > 1e-5) {
+				phi_px(p_i, x_i) = (dist * dist) * log(dist);
+			}
+		}
+	}
+
+	MatrixXd PT = P * d + phi_px * w;
+	if (hnormalize) {
+		data_process::hnorm(PT);
+	}
+	return PT;
+}
+
+Vector2d rpm::ThinPlateSplineParams::applyTransform(const Vector2d& p, bool hnormalize) const
+{
+	Vector3d P = p.homogeneous();
+
+	const int K = X.rows();
+	VectorXd phi_px = VectorXd::Zero(K);  // phi(a, b) = || Xb - Xa || ^ 2 * log(|| Xb - Xa ||);
+#pragma omp parallel for
+	for (int x_i = 0; x_i < K; x_i++) {
+		const Vector3d& x = X.row(x_i);
+
+		double dist = (P - x).norm();
+		if (dist > 1e-5) {
+			phi_px(x_i) = (dist * dist) * log(dist);
+		}
+	}
+
+	Vector3d PT = d.transpose() * P + w.transpose() * phi_px;
+	return PT.hnormalized();
 }

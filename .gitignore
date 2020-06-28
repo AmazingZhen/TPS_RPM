@@ -247,3 +247,5 @@ ModelManifest.xml
 *.png
 /TPS_RPM/data/human
 /TPS_RPM/data
+/TPS_RPM/data_origin.psd
+/TPS_RPM/data_result.psd

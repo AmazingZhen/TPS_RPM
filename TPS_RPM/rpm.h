@@ -10,6 +10,7 @@
 
 #include <Eigen/Dense>
 #include <iostream>
+#include <vector>
 
 using namespace Eigen;
 using namespace std;
@@ -23,7 +24,7 @@ namespace rpm {
 	extern double T_start, T_end;
 	extern double r, I0, epsilon0;
 	extern double alpha; // 5 * 5
-	// Softassign params
+						 // Softassign params
 	extern double I1, epsilon1;
 	// Thin-plate spline params
 	extern double lambda_start;
@@ -31,7 +32,7 @@ namespace rpm {
 
 	extern double scale;  // for visualize
 
-	void set_T_start(double T);
+	void set_T_start(double T, double scale);
 
 	class ThinPlateSplineParams {
 	public:
@@ -43,8 +44,9 @@ namespace rpm {
 		// K * (D + 1) matrix representing the non-affine deformation.
 		MatrixXd w;
 
-		MatrixXd applyTransform() const;
-		VectorXd applyTransform(int x_i) const;
+		MatrixXd applyTransform(bool hnormalize = false) const;
+		MatrixXd applyTransform(const MatrixXd& P, bool hnormalize = false) const;
+		Vector2d applyTransform(const Vector2d& p, bool hnormalize = false) const;
 
 		MatrixXd get_phi() { return phi; };
 		MatrixXd get_Q() { return Q; };
@@ -73,7 +75,8 @@ namespace rpm {
 		const MatrixXd& X,
 		const MatrixXd& Y,
 		MatrixXd& M,
-		ThinPlateSplineParams& params
+		ThinPlateSplineParams& params,
+		const vector<pair<int, int> >& matched_point_indices = vector<pair<int, int> >()
 	);
 
 	bool init_params(
@@ -97,6 +100,7 @@ namespace rpm {
 	bool estimate_correspondence(
 		const MatrixXd& X,
 		const MatrixXd& Y,
+		const vector<pair<int, int> >& matched_point_indices,
 		const ThinPlateSplineParams& params,
 		const double T,
 		const double T0,
